@@ -439,16 +439,8 @@ async function handleDeliveryDM(event) {
     return;
   }
 
-  // Если сессия на главном шаге, но текст не распознан — просто показываем меню
-  if (sess.step === DEL_STEP.MAIN) {
-    await sendMessage(peerId,
-      'Выберите раздел:',
-      { keyboard: msgKb([
-          [{ label: 'Каталог', color: 'secondary' }, { label: 'Заказать', color: 'positive' }],
-          [{ label: 'Трудоустройство', color: 'secondary' }, { label: 'Частые вопросы', color: 'secondary' }],
-        ]) }, 2);
-    return;
-  }
+  // Если сессия на главном шаге, но текст не распознан — НЕ показываем меню автоматически.
+  // Пользователь должен явно вызвать кнопку или команду.
 
   // ── Трудоустройство ──────────────────────────────────────
   if (text === 'Трудоустройство') {
@@ -1029,24 +1021,31 @@ async function handleGroup1DM(event) {
     return;
   }
 
-  // ── Admin: catalogue management ───────────────────────────
+  // ── Admin: catalogue management (РС + СС) ────────────────
   if (isSs) {
     const adminResult = await handleAdminCatalogueSession(uid, peerId, text, event);
     if (adminResult) return;
-    const adminResult2 = await handleAdminPromosSession(uid, peerId, text, event, role);
-    if (adminResult2) return;
-    const adminResult3 = await handleAdminVehiclesSession(uid, peerId, text, event);
-    if (adminResult3) return;
+    // Промокоды и авто — только РС
+    if (isRs) {
+      const adminResult2 = await handleAdminPromosSession(uid, peerId, text, event, role);
+      if (adminResult2) return;
+      const adminResult3 = await handleAdminVehiclesSession(uid, peerId, text, event);
+      if (adminResult3) return;
+    }
   }
 
   // ── Staff registration / profile ─────────────────────────
   if (!profile && step === STAFF_STEP.NONE) {
-    if (text.toLowerCase() === 'регистрация' || text.toLowerCase() === 'начать') {
+    if (text.toLowerCase() === 'регистрация' || text.toLowerCase() === 'начать' || text === '/start') {
       sess.step = STAFF_STEP.REG_NICK;
       storage.staffSessions.set(uid, sess);
-      await sendMessage(peerId, 'Добро пожаловать!\nД��я работы с ботом необходима регистрация.\n\nВведите ваш ник (игровое имя):', {}, 1);
+      await sendMessage(peerId, 'Добро пожаловать!\nДля работы с ботом необходима регистрация.\n\nВведите ваш игровой ник:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
       return;
     }
+    await sendMessage(peerId, 'Для начала работы нажмите «Регистрация».',
+      { keyboard: msgKb([[{ label: 'Регистрация', color: 'positive' }]]) }, 1);
+    return;
+  }
     await sendMessage(peerId, 'Для начала работы введите «Регистрация».', {}, 1);
     return;
   }
@@ -1074,8 +1073,11 @@ async function handleGroup1DM(event) {
     sess.step = STAFF_STEP.NONE;
     storage.staffSessions.set(uid, sess);
     await sendMessage(peerId,
-      `Профиль создан!\nНик: ${sess.data.nick}\nБанк. счёт: ${sess.data.bank}\n\nТеперь добавьте транспортное средство, чтобы принимать заказы.\n\nВведите «Мой профиль» или «Автопарк».`,
-      {}, 1);
+      `Профиль создан!\nНик: ${sess.data.nick}\nБанк. счёт: ${sess.data.bank}\n\nТеперь добавьте транспортное средство, чтобы принимать заказы.`,
+      { keyboard: msgKb([
+        [{ label: 'Автопарк', color: 'positive' }],
+        [{ label: 'Главное меню', color: 'secondary' }],
+      ]) }, 1);
     return;
   }
 
@@ -1085,11 +1087,22 @@ async function handleGroup1DM(event) {
     return;
   }
 
+  // Главное меню Group1 DM — кнопки вместо команд
+  if (text === 'Главное меню' || text === 'начать' || text === '/start') {
+    sess.step = STAFF_STEP.NONE;
+    storage.staffSessions.set(uid, sess);
+    await showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role);
+    return;
+  }
+
   if (text === 'Мой профиль' || text === 'профиль') {
-    const cars = (profile.vehicles || []).map(v => `  • ${v.name}${v.isOrg ? ' [орг]' : ''}${v.brandColor ? ' [фирм.]' : ''}`).join('\n');
+    const cars    = (profile.vehicles || []).map(v => `  • ${v.name}${v.isOrg ? ' [орг]' : ''}${v.brandColor ? ' [фирм.]' : ''}`).join('\n');
     const orgCars = (profile.orgVehicles || []).map(v => `  • ${v.name}`).join('\n');
-    const text2 = `Профиль сотрудника:\n\nНик: ${profile.nick}\nБанк. счёт: ${profile.bank}\nРоль: ${profile.role}\n\nЛичный автопарк:\n${cars || '  (нет)'}\nАвто организации:\n${orgCars || '  (нет)'}\n\nСтатистика:\n  Заказы доставки: ${profile.stats?.deliveryOrders || 0}\n  Заказы такси: ${profile.stats?.taxiOrders || 0}`;
-    await sendMessage(peerId, text2, { keyboard: msgKb([[{ label: 'Автопарк' }, { label: 'Изменить ник' }, { label: 'Изменить счёт' }]]) }, 1);
+    const text2   = `Профиль сотрудника:\n\nНик: ${profile.nick}\nБанк. счёт: ${profile.bank}\nРоль: ${profile.role}\n\nЛичный автопарк:\n${cars || '  (нет)'}\nАвто организации:\n${orgCars || '  (нет)'}\n\nСтатистика:\n  Заказы доставки: ${profile.stats?.deliveryOrders || 0}\n  Заказы такси: ${profile.stats?.taxiOrders || 0}`;
+    await sendMessage(peerId, text2, { keyboard: msgKb([
+      [{ label: 'Автопарк', color: 'secondary' }, { label: 'Изменить ник', color: 'secondary' }, { label: 'Изменить счёт', color: 'secondary' }],
+      [{ label: 'Главное меню', color: 'secondary' }],
+    ]) }, 1);
     return;
   }
 
@@ -1101,10 +1114,11 @@ async function handleGroup1DM(event) {
   if (text === 'Изменить ник') {
     sess.step = 'change_nick';
     storage.staffSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите новый ник:', {}, 1);
+    await sendMessage(peerId, 'Введите новый ник:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
     return;
   }
   if (step === 'change_nick') {
+    if (text === 'Отмена') { sess.step = STAFF_STEP.NONE; storage.staffSessions.set(uid, sess); await showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role); return; }
     profile.nick = text;
     writeJSON(STAFF_FILE, staff);
     sess.step = STAFF_STEP.NONE;
@@ -1116,10 +1130,11 @@ async function handleGroup1DM(event) {
   if (text === 'Изменить счёт') {
     sess.step = 'change_bank';
     storage.staffSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите новый банковский счёт:', {}, 1);
+    await sendMessage(peerId, 'Введите новый банковский счёт:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
     return;
   }
   if (step === 'change_bank') {
+    if (text === 'Отмена') { sess.step = STAFF_STEP.NONE; storage.staffSessions.set(uid, sess); await showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role); return; }
     profile.bank = text;
     writeJSON(STAFF_FILE, staff);
     sess.step = STAFF_STEP.NONE;
@@ -1128,20 +1143,38 @@ async function handleGroup1DM(event) {
     return;
   }
 
-  // Senior staff: view employee profiles
-  if (isSs && text.startsWith('Профиль ')) {
-    const targetNick = text.slice(8).trim();
-    const target = Object.values(staff).find(s => s.nick.toLowerCase() === targetNick.toLowerCase());
-    if (!target) { await sendMessage(peerId, `Сотрудник «${targetNick}» не найден.`, {}, 1); return; }
-    const cars = (target.vehicles || []).map(v => `  • ${v.name}${v.brandColor ? ' [фирм.]' : ''}${v.photo ? ' [фото есть]' : ''}`).join('\n');
+  // «Список сотрудников» — показываем всех (СС/РС)
+  if (isSs && text === 'Список сотрудников') {
+    const lines = Object.values(staff).map(s => {
+      const roleLabel = { rs: 'РС', ss: 'СС', kurier: 'Курьер', stazher: 'Стажёр' }[s.role] || s.role;
+      return `• [${roleLabel}] ${s.nick} (id${s.uid})`;
+    });
+    await sendMessage(peerId, `Сотрудники (${lines.length}):\n${lines.join('\n') || '(нет)'}`, { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 1);
+    return;
+  }
+
+  // «Профиль сотрудника» — поиск по нику
+  if (isSs && text === 'Профиль сотрудника') {
+    sess.step = 'find_staff';
+    storage.staffSessions.set(uid, sess);
+    await sendMessage(peerId, 'Введите ник сотрудника:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
+    return;
+  }
+  if (step === 'find_staff') {
+    if (text === 'Отмена') { sess.step = STAFF_STEP.NONE; storage.staffSessions.set(uid, sess); await showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role); return; }
+    const target = Object.values(staff).find(s => s.nick.toLowerCase() === text.toLowerCase());
+    if (!target) { await sendMessage(peerId, `Сотрудник «${text}» не найден.`, {}, 1); return; }
+    const cars = (target.vehicles || []).map(v => `  • ${v.name}${v.brandColor ? ' [фирм.]' : ''}`).join('\n');
     await sendMessage(peerId,
       `Профиль: ${target.nick}\nРоль: ${target.role}\nБанк: ${target.bank}\nАвтопарк:\n${cars || '  (нет)'}\nЗаказы доставки: ${target.stats?.deliveryOrders || 0}\nЗаказы такси: ${target.stats?.taxiOrders || 0}`,
-      {}, 1);
+      { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 1);
+    sess.step = STAFF_STEP.NONE;
+    storage.staffSessions.set(uid, sess);
     return;
   }
 
   // Admin commands
-  if (isRs) {
+  if (isRs || isSs) {
     if (text.startsWith('Добавить категорию') || text.startsWith('Добавить товар') || text.startsWith('Добавить сет') ||
         text.startsWith('Управление каталогом') || text.startsWith('Управление промокодами') ||
         text.startsWith('Управление авто')) {
@@ -1150,15 +1183,35 @@ async function handleGroup1DM(event) {
     }
   }
 
-  // Default
-  const menu = [`Доступные команды:`];
-  menu.push('• «Мой профиль» — просмотр профиля');
-  menu.push('• «Автопарк» — управление транспортом');
-  if (isSs) menu.push('• «Управление каталогом» — CRUD товаров (РС/СС)');
-  if (isRs) menu.push('• «Управление промокодами» — промокоды');
-  if (isRs) menu.push('• «Управление авто» — авто организации');
-  if (isSs) menu.push('• «Профиль [ник]» — просмотр сотрудника');
-  await sendMessage(peerId, menu.join('\n'), {}, 1);
+  // Default — нераспознанный текст, показываем меню
+  await showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role);
+}
+
+/**
+ * Главное меню Group 1 ЛС с кнопками в зависимости от роли
+ */
+async function showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role) {
+  const rows = [
+    [{ label: 'Мой профиль', color: 'secondary' }, { label: 'Автопарк', color: 'secondary' }],
+  ];
+
+  if (isSs) {
+    rows.push([{ label: 'Управление каталогом', color: 'primary' }]);
+    rows.push([{ label: 'Список сотрудников', color: 'secondary' }, { label: 'Профиль сотрудника', color: 'secondary' }]);
+  }
+  if (isRs) {
+    rows.push([{ label: 'Управление промокодами', color: 'primary' }]);
+    rows.push([{ label: 'Управление авто', color: 'primary' }]);
+    rows.push([{ label: 'Управление точками такси', color: 'primary' }]);
+  }
+
+  const onlineInfo = storage.online.get(uid);
+  const statusLine = onlineInfo ? `\nСтатус: ${onlineInfo.afk ? 'АФК' : 'На смене'} (${onlineInfo.status})` : '';
+  const roleLabel  = { rs: 'Руководство (РС)', ss: 'Старший состав (СС)', kurier: 'Курьер', stazher: 'Стажёр' }[role] || role;
+
+  await sendMessage(peerId,
+    `Привет, ${profile.nick}!\nРоль: ${roleLabel}${statusLine}\n\nВыберите раздел:`,
+    { keyboard: msgKb(rows) }, 1);
 }
 
 // ─────────────────────────── VEHICLE MANAGEMENT ───────────────
@@ -1307,7 +1360,7 @@ async function handleStaffVehicleAdd(uid, peerId, text, event) {
 
   if (text === 'Удалить авто') {
     const allCars = [...(profile.vehicles || []).map(v => ({ ...v, src: 'personal' })), ...(profile.orgVehicles || []).map(v => ({ ...v, src: 'org' }))];
-    if (!allCars.length) { await sendMessage(peerId, 'Нет авто для удаления.', {}, 1); return true; }
+    if (!allCars.length) { await sendMessage(peerId, 'Нет а��то для удаления.', {}, 1); return true; }
     sess.step = 'staff_veh_delete'; storage.staffSessions.set(uid, sess);
     const rows = allCars.map(v => [{ label: v.name + (v.src === 'org' ? ' [орг]' : '') }]);
     rows.push([{ label: 'Отмена' }]);
@@ -1885,7 +1938,16 @@ async function handleTaxiDM(event) {
   }
 
   if (sess.step === TAXI_STEP.ORDER_CONFIRM) {
-    if (text === 'Изменить') { sess.step = TAXI_STEP.ORDER_NICK; await sendMessage(peerId, 'Введите никнейм:', {}, 3); return; }
+    if (text === 'Отмена') {
+      sess.step = TAXI_STEP.MAIN; sess.data = {};
+      storage.clientSessions.set('taxi_'+uid, sess);
+      await sendMessage(peerId, 'Заказ отменён. Главное меню:', { keyboard: msgKb([
+        [{ label: 'Заказать такси', color: 'positive' }],
+        [{ label: 'Трудоустройство', color: 'secondary' }, { label: 'Частые вопросы', color: 'secondary' }],
+      ]) }, 3);
+      return;
+    }
+    if (text === 'Изменить') { sess.step = TAXI_STEP.ORDER_NICK; await sendMessage(peerId, 'Введите никнейм:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 3); return; }
     if (text === 'Подтвердить') {
       const orderId = genId();
       const order = {
@@ -1944,7 +2006,10 @@ async function showTaxiConfirm(peerId, uid, sess, groupKey) {
   const promoText = sess.data.promoDesc ? `\nПромокод: ${sess.data.promoDesc}` : '';
   await sendMessage(peerId,
     `Проверьте заказ:\n\nНик: ${sess.data.nick}${passText}\nОткуда: ${sess.data.from.name}\nКуда: ${sess.data.to.name}\nОплата: ${payText}\nСтоимость: ${sess.data.finalPrice}р.${promoText}\n\nВсё верно?`,
-    { keyboard: msgKb([[{ label: 'Подтвердить', color: 'positive' }, { label: 'Изменить', color: 'secondary' }]]) }, groupKey);
+    { keyboard: msgKb([
+        [{ label: 'Подтвердить', color: 'positive' }, { label: 'Изменить', color: 'secondary' }],
+        [{ label: 'Отмена', color: 'negative' }],
+      ]) }, groupKey);
 }
 
 function calculateTaxiPrice(from, to) {
@@ -2065,46 +2130,91 @@ async function handleTaxiPointAdmin(uid, peerId, text, event) {
   return false;
 }
 
+// Постоянная клавиатура журнала (зелёный=онлайн, синий=афк, красный=вышел)
+function journalKeyboard() {
+  return msgKb([
+    [
+      { label: '!онлайн',  color: 'positive'  },
+      { label: '!афк',     color: 'primary'   },
+      { label: '!вышел',   color: 'negative'  },
+    ],
+    [{ label: '!стата', color: 'secondary' }],
+  ]);
+}
+
 // ─────────────────────────── ACTIVITY JOURNAL ─────────────────
 async function handleJournalMessage(event) {
-  const text   = (event.text || '').trim();
-  const uid    = event.from_id;
-  const peerId = event.peer_id;
+  const rawText = (event.text || '').trim();
+  const uid     = event.from_id;
+  const peerId  = event.peer_id;
 
-  if (!text.startsWith('!')) return;
+  // Допустимые команды журнала: !онлайн, !афк, !вышел, !стата
+  const journalCmds = ['!онлайн', '!афк', '!вышел', '!стата'];
+  const lowerText   = rawText.toLowerCase();
+  const matchedCmd  = journalCmds.find(c => lowerText === c || lowerText.startsWith(c + ' '));
+  if (!matchedCmd) return false; // не команда журнала
 
-  const parts  = text.split(' ');
-  const cmd    = parts[0].toLowerCase();
+  const parts      = rawText.split(/\s+/);
+  const cmd        = parts[0].toLowerCase();
   const statusText = parts.slice(1).join(' ');
 
-  const staff = readJSON(STAFF_FILE, {});
+  // !стата делегируем
+  if (cmd === '!стата') {
+    await handleStatsCommand(event);
+    return true;
+  }
+
+  const staff   = readJSON(STAFF_FILE, {});
   const profile = staff[uid];
 
-  // Determine nick and role
-  const nick   = profile?.nick || `id${uid}`;
-  const role   = profile?.role || (await getUserRole(uid)) || 'Курьер';
+  // Роль: сначала из staff-файла, потом по членству в чатах руководства/СС
+  let role = profile?.role || null;
+  if (!role) {
+    // Проверяем членство в чате Руководство → РС, СС-чатов → СС
+    try {
+      const rmembers = CHATS.rukovodstvo
+        ? await callVK('messages.getConversationMembers', { peer_id: CHATS.rukovodstvo }, 1)
+        : { items: [] };
+      if ((rmembers.items || []).some(m => m.member_id === uid)) role = 'rs';
+    } catch(_) {}
+    if (!role) {
+      try {
+        const ssd = CHATS.ss ? await callVK('messages.getConversationMembers', { peer_id: CHATS.ss }, 2) : { items: [] };
+        const sst = CHATS.taxiSs ? await callVK('messages.getConversationMembers', { peer_id: CHATS.taxiSs }, 3) : { items: [] };
+        if ((ssd.items || []).some(m => m.member_id === uid) || (sst.items || []).some(m => m.member_id === uid)) role = 'ss';
+      } catch(_) {}
+    }
+    if (!role) role = 'kurier';
+  }
+
+  const nick     = profile?.nick || `id${uid}`;
   const roleAbbr = { rs: 'РС', ss: 'СС', kurier: 'Курьер', stazher: 'Стажёр' }[role] || role;
 
-  // Determine org membership
+  // Орг-принадлежность из профиля, иначе по членству
   let orgs = [];
-  if (profile?.groups) orgs = profile.groups;
-  // Fallback: check chat membership
-  if (!orgs.length) {
+  if (profile?.groups && profile.groups.length) {
+    orgs = profile.groups;
+  } else {
     try {
-      const dm = await callVK('messages.getConversationMembers', { peer_id: CHATS.dispetcherskaya });
-      if ((dm.items || []).some(m => m.member_id === uid)) orgs.push('delivery');
+      if (CHATS.dispetcherskaya) {
+        const dm = await callVK('messages.getConversationMembers', { peer_id: CHATS.dispetcherskaya }, 2);
+        if ((dm.items || []).some(m => m.member_id === uid)) orgs.push('delivery');
+      }
     } catch(_) {}
     try {
-      const tm = await callVK('messages.getConversationMembers', { peer_id: CHATS.taxiDispetcherskaya });
-      if ((tm.items || []).some(m => m.member_id === uid)) orgs.push('taxi');
+      if (CHATS.taxiDispetcherskaya) {
+        const tm = await callVK('messages.getConversationMembers', { peer_id: CHATS.taxiDispetcherskaya }, 3);
+        if ((tm.items || []).some(m => m.member_id === uid)) orgs.push('taxi');
+      }
     } catch(_) {}
+    if (!orgs.length) orgs = ['delivery']; // если не определить — показываем как delivery
   }
 
   let newStatus, online, afk;
 
   if (cmd === '!онлайн') {
     online = true; afk = false;
-    newStatus = statusText || (role === 'stazher' ? 'экзамен' : 'доставка');
+    newStatus = statusText || (role === 'stazher' ? 'Экзамен' : 'На смене');
   } else if (cmd === '!афк') {
     online = true; afk = true;
     newStatus = statusText || 'Не у ПК';
@@ -2112,14 +2222,13 @@ async function handleJournalMessage(event) {
     online = false; afk = false;
     newStatus = '';
   } else {
-    return; // not a journal command
+    return false;
   }
 
   // Update online map
-  const now = Date.now();
+  const now  = Date.now();
   const prev = storage.online.get(uid);
   if (prev && prev.online && !online) {
-    // Session ending — accumulate time
     const dur = now - (prev.since || now);
     updateOnlineStats(uid, dur);
   }
@@ -2140,24 +2249,39 @@ async function handleJournalMessage(event) {
   writeJSON(ONLINE_FILE, oj);
 
   // Build server list message
-  const serverList = buildServerList(nick, online ? (afk ? `${newStatus} (АФК)` : newStatus) : null, online);
+  const serverList = buildServerList();
 
   let actionText;
-  if (cmd === '!онлайн') actionText = `${nick} в сети. (${newStatus})`;
-  else if (cmd === '!афк') actionText = `${nick} — АФК. (${newStatus})`;
-  else actionText = `${nick} вышел.`;
+  if (cmd === '!онлайн') actionText = `${nick} [${roleAbbr}] вышел на смену. Статус: ${newStatus}`;
+  else if (cmd === '!афк')   actionText = `${nick} [${roleAbbr}] ушёл в АФК. (${newStatus})`;
+  else                        actionText = `${nick} [${roleAbbr}] завершил смену.`;
 
-  await sendMessage(peerId, `${actionText}\n\n${serverList}`, {}, 1);
+  // Отправляем с постоянной клавиатурой кнопок !онлайн / !афк / !вышел
+  await sendMessage(peerId, `${actionText}\n\n${serverList}`, { keyboard: journalKeyboard() }, 1);
+  return true;
 }
 
-function buildServerList(triggerNick, triggerStatus, triggerOnline) {
-  const onlineList = [];
-  storage.online.forEach((info, uid) => {
-    onlineList.push(`${info.nick} (${info.roleAbbr}) ${info.status}${info.afk ? ' (АФК)' : ''}`);
+function buildServerList() {
+  const activeList = [];
+  const afkList    = [];
+
+  storage.online.forEach((info) => {
+    const line = `• ${info.nick} [${info.roleAbbr || info.role}] — ${info.status || ''}`;
+    if (info.afk) afkList.push(line);
+    else          activeList.push(line);
   });
 
-  if (!onlineList.length) return 'На сервере:\n(никого нет)';
-  return `На сервере:\n${onlineList.join('\n')}`;
+  const lines = [];
+  lines.push(`На смене (${activeList.length}):`);
+  if (activeList.length) lines.push(...activeList);
+  else                   lines.push('  (никого нет)');
+
+  if (afkList.length) {
+    lines.push(`\nАФК (${afkList.length}):`);
+    lines.push(...afkList);
+  }
+
+  return lines.join('\n');
 }
 
 function updateOnlineStats(uid, durationMs) {
@@ -2464,7 +2588,7 @@ async function handleChatCommand(event, groupKey) {
   // !закреп
   if (cmd === '!закреп') {
     if (!isRs) { await sendMessage(peerId, 'Только РС', {}, groupKey); return true; }
-    if (!reply) { await sendMessage(peerId, 'Ответьте на сообщение для закрепления', {}, groupKey); return true; }
+    if (!reply) { await sendMessage(peerId, 'Ответьте на сообщение дл�� закрепления', {}, groupKey); return true; }
     try {
       await callVK('messages.pin', { peer_id: peerId, conversation_message_id: reply.conversation_message_id });
       await sendMessage(peerId, 'Сообщение закреплено', {}, groupKey);
@@ -2586,7 +2710,7 @@ async function handleChatCommand(event, groupKey) {
     let targetId = parts[1] ? extractUserId(parts[1]) : null;
     if (!targetId) { await sendMessage(peerId, 'Укажите пользователя', {}, groupKey); return true; }
     const ok = removeFromBlacklist(targetId);
-    await sendMessage(peerId, ok ? `Пользователь ${targetId} разбанен` : 'Пользователь не в бане', {}, groupKey);
+    await sendMessage(peerId, ok ? `Пользователь ${targetId} разбанен` : 'Пользователь не в б��не', {}, groupKey);
     return true;
   }
 
@@ -2612,7 +2736,7 @@ async function handleChatCommand(event, groupKey) {
     let targetId = parts[1] ? extractUserId(parts[1]) : null;
     if (!targetId) { await sendMessage(peerId, 'Укажите пользователя', {}, groupKey); return true; }
     const ok = removeMute(targetId);
-    await sendMessage(peerId, ok ? `Мут снят с пользователя ${targetId}` : 'Пользователь не замучен', {}, groupKey);
+    await sendMessage(peerId, ok ? `Мут снят с пользователя ${targetId}` : 'Пользователь не замуч��н', {}, groupKey);
     return true;
   }
 
@@ -2819,14 +2943,24 @@ async function handleCallback(event, groupKey) {
 // ─────────────────────────── NEW-MEMBER GREETING ──────────────
 async function handleNewMember(event, groupKey) {
   const peerId = event.peer_id;
-  const greeting = storage.greetings.get(peerId);
-  if (!greeting) return;
   const newMembers = event.action?.member_ids || [event.action?.member_id].filter(Boolean);
+
+  // Если это журнал активности — сразу показываем кнопки смены
+  const isJournal = peerId === CHATS.zhurnal;
+
+  const greeting = storage.greetings.get(peerId);
   for (const mid of newMembers) {
-    if (mid < 0) continue; // bot itself
+    if (mid < 0) continue;
     const user = await getUser(mid, groupKey);
     const name = user ? `${user.first_name} ${user.last_name}` : `id${mid}`;
-    await sendMessage(peerId, greeting.replace('{name}', name).replace('{id}', mid), {}, groupKey);
+    if (greeting) {
+      await sendMessage(peerId, greeting.replace('{name}', name).replace('{id}', mid),
+        isJournal ? { keyboard: journalKeyboard() } : {}, groupKey);
+    } else if (isJournal) {
+      await sendMessage(peerId,
+        `Привет, ${name}! Нажми !онлайн чтобы начать смену.`,
+        { keyboard: journalKeyboard() }, groupKey);
+    }
   }
 }
 
@@ -2849,17 +2983,10 @@ async function handleEvent(event, groupKey) {
       const banInfo = isBlacklisted(uid);
       if (banInfo && peerId > 2000000000) return; // silently ignore banned users in chats
 
-      // Journal commands in zhurnal chat (и дублируем в учебных центрах)
-      const isJournalChat = peerId === CHATS.zhurnal || peerId === CHATS.uchebny || peerId === CHATS.taxiUchebny;
-      if (isJournalChat) {
-        await handleJournalMessage(msg);
-        if ((msg.text || '').trim().toLowerCase() === '!стата') {
-          await handleStatsCommand(msg);
-        }
-        // Также обрабатываем обычные чат-команды (!кик, !мут и т.д.) в учебных чатах
-        if (peerId !== CHATS.zhurnal) {
-          await handleChatCommand(msg, groupKey);
-        }
+      // Журнал активности — только этот чат обрабатывает !онлайн/!афк/!вышел/!стата
+      // !стата также доступна во всех чатах через handleChatCommand
+      if (peerId === CHATS.zhurnal) {
+        await handleJournalMessage(msg); // включает !стата
         return;
       }
 
