@@ -69,21 +69,32 @@
 
 ### !кик - Удаление пользователей
 
-**С баном:**
+**Из текущего чата (ответом на сообщение):**
 ```
-!кик vk.com/id123456789 30
-```
-(кикнет из всех чатов + бан на 30 дней)
-
-**Перманентный бан:**
-```
-!кик vk.com/id123456789 999
+!кик
 ```
 
-**Только из спонсорской:**
+**Из текущего чата по ID:**
 ```
-!кик vk.com/id123456789 спонсор
+!кик vk.com/id123456789
 ```
+
+**Из всех 12 чатов организации:**
+```
+!кик vk.com/id123456789 все Нарушение правил
+```
+
+**Из всех чатов Delivery:**
+```
+!кик vk.com/id123456789 доставка Флуд
+```
+
+**Из всех чатов TAXI:**
+```
+!кик vk.com/id123456789 такси
+```
+
+Кик записывается в Журнал Активности автоматически.
 
 ---
 
@@ -140,16 +151,25 @@
 1. Открыть беседу в браузере → URL: `...?sel=c123` (ID = 123)
 2. Использовать команду без ID в нужной беседе
 
-**Настройка в .env:**
+**Все 12 чатов — настройка в .env:**
 ```
-VK_CHAT_RUKOVODSTVO_ID=xxx
-VK_CHAT_SS_ID=xxx
-VK_CHAT_UCHEBNY_ID=xxx
-VK_CHAT_DOSKA_ID=xxx
-VK_CHAT_DISPETCHERSKAYA_ID=xxx
-VK_CHAT_FLUDILKA_ID=xxx
-VK_CHAT_ZHURNAL_ID=xxx
-VK_CHAT_SPONSOR_ID=xxx
+# Kaskad Group (общие)
+VK_CHAT_DOSKA_ID=xxx               # 1.  Доска объявлений
+VK_CHAT_ZHURNAL_ID=xxx             # 4.  Журнал Активности
+VK_CHAT_RUKOVODSTVO_ID=xxx         # 9.  Руководство
+VK_CHAT_SPONSOR_ID=xxx             # 10. Спонсорская беседа
+
+# Kaskad Delivery
+VK_CHAT_FLUDILKA_ID=xxx            # 2.  Флудилка Delivery
+VK_CHAT_DISPETCHERSKAYA_ID=xxx     # 5.  Диспетчерская Delivery
+VK_CHAT_SS_ID=xxx                  # 7.  Старший состав Delivery
+VK_CHAT_UCHEBNY_ID=xxx             # 11. Учебный центр Delivery
+
+# Kaskad TAXI
+VK_CHAT_TAXI_FLUDILKA_ID=xxx       # 3.  Флудилка TAXI
+VK_CHAT_TAXI_DISPETCHERSKAYA_ID=xxx# 6.  Диспетчерская TAXI
+VK_CHAT_TAXI_SS_ID=xxx             # 8.  Старший состав TAXI
+VK_CHAT_TAXI_UCHEBNY_ID=xxx        # 12. Учебный центр TAXI
 ```
 
 ---
