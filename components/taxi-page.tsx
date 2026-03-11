@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import { Button, Card, Input, Modal, Spinner, Badge, Divider } from "@/components/ui-kit";
-import type { TaxiPoints, TaxiCategory, TaxiPoint } from "@/lib/types";
+import React, { useState, useCallback } from "react";
+import { Button, Card, Input, Spinner, Divider } from "@/components/ui-kit";
+import { useApp } from "@/lib/app-context";
+import type { TaxiPoints, TaxiPoint } from "@/lib/types";
 
 type Step =
   | "menu"
@@ -21,9 +22,11 @@ const PAYMENT_TYPES = [
 ];
 
 export default function TaxiPage() {
+  const { vkUser } = useApp();
   const [step, setStep] = useState<Step>("menu");
   const [points, setPoints] = useState<TaxiPoints | null>(null);
   const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [nick, setNick] = useState("");
   const [from, setFrom] = useState<TaxiPoint | null>(null);
   const [to, setTo] = useState<TaxiPoint | null>(null);
@@ -346,10 +349,32 @@ export default function TaxiPage() {
           </div>
         </Card>
         <p className="text-sm text-[var(--color-muted-foreground)] text-center text-pretty">
-          Заказ будет оформлен через бот ВКонтакте. Перейдите в бот такси для подтверждения.
+          Заказ будет создан в системе и передан диспетчерам.
         </p>
-        <Button variant="positive" fullWidth onClick={() => setStep("done")}>
-          Подтвердить
+        <Button variant="positive" fullWidth disabled={submitting} onClick={async () => {
+          setSubmitting(true);
+          try {
+            await fetch("/api/orders", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "create_order",
+                type: "taxi",
+                clientId: vkUser?.id || 0,
+                nick: nick || (vkUser?.id ? `id${vkUser.id}` : "Аноним"),
+                from,
+                to,
+                passengers,
+                payment: { type: payment },
+                finalPrice: price,
+              }),
+            });
+            setStep("done");
+          } finally {
+            setSubmitting(false);
+          }
+        }}>
+          {submitting ? "Отправка..." : "Подтвердить"}
         </Button>
       </div>
     );

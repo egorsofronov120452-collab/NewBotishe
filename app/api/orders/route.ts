@@ -37,6 +37,10 @@ export async function GET(request: Request) {
   return NextResponse.json(orders);
 }
 
+function genId() {
+  return `ord_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
 export async function POST(request: Request) {
   const body = await request.json();
   const { action, type, orderId, ...payload } = body;
@@ -46,7 +50,7 @@ export async function POST(request: Request) {
     if (type === "delivery") {
       const idx = orders.delivery.findIndex((o) => o.id === orderId);
       if (idx !== -1) {
-        orders.delivery[idx] = { ...orders.delivery[idx], ...payload };
+        orders.delivery[idx] = { ...orders.delivery[idx], status: payload.status };
         writeOrders(orders);
         return NextResponse.json({ ok: true });
       }
@@ -54,12 +58,66 @@ export async function POST(request: Request) {
     if (type === "taxi") {
       const idx = orders.taxi.findIndex((o) => o.id === orderId);
       if (idx !== -1) {
-        orders.taxi[idx] = { ...orders.taxi[idx], ...payload };
+        orders.taxi[idx] = { ...orders.taxi[idx], status: payload.status };
         writeOrders(orders);
         return NextResponse.json({ ok: true });
       }
     }
     return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+
+  if (action === "create_order") {
+    const id = genId();
+    if (type === "delivery") {
+      const order = {
+        id,
+        type: "delivery" as const,
+        clientId: payload.clientId || 0,
+        nick: payload.nick || "Аноним",
+        address: payload.address || "",
+        basket: payload.basket || [],
+        total: payload.total || 0,
+        finalPrice: payload.finalPrice || payload.total || 0,
+        promoDesc: payload.promoDesc || null,
+        payment: payload.payment || { type: "cash" },
+        status: "pending" as const,
+        createdAt: Date.now(),
+      };
+      orders.delivery.unshift(order);
+      writeOrders(orders);
+      return NextResponse.json({ ok: true, order });
+    }
+    if (type === "taxi") {
+      const order = {
+        id,
+        type: "taxi" as const,
+        clientId: payload.clientId || 0,
+        nick: payload.nick || "Аноним",
+        from: payload.from || null,
+        to: payload.to || null,
+        passengers: payload.passengers || [],
+        payment: payload.payment || { type: "cash" },
+        finalPrice: payload.finalPrice || 0,
+        status: "pending" as const,
+        createdAt: Date.now(),
+      };
+      orders.taxi.unshift(order);
+      writeOrders(orders);
+      return NextResponse.json({ ok: true, order });
+    }
+  }
+
+  if (action === "delete_order") {
+    if (type === "delivery") {
+      orders.delivery = orders.delivery.filter((o) => o.id !== orderId);
+      writeOrders(orders);
+      return NextResponse.json({ ok: true });
+    }
+    if (type === "taxi") {
+      orders.taxi = orders.taxi.filter((o) => o.id !== orderId);
+      writeOrders(orders);
+      return NextResponse.json({ ok: true });
+    }
   }
 
   return NextResponse.json({ error: "unknown action" }, { status: 400 });

@@ -28,16 +28,19 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const { action, promoType, ...payload } = body;
+  // Support both `service` and legacy `promoType`
+  const { action, service, promoType, ...payload } = body;
   const promos = readPromos();
-  const list = promoType === "taxi" ? promos.taxi : promos.delivery;
+  const target = (service || promoType) as "delivery" | "taxi";
+  const list = target === "taxi" ? promos.taxi : promos.delivery;
 
-  if (action === "add") {
+  // Support "add" and "add_promo"
+  if (action === "add" || action === "add_promo") {
     const { code, type, value, freeItem, maxUses } = payload;
     if (!code || !type) return NextResponse.json({ error: "code+type required" }, { status: 400 });
     const promo: PromoCode = {
       id: genId(),
-      code,
+      code: String(code).toUpperCase(),
       type,
       value: parseFloat(value) || 0,
       freeItem: freeItem || undefined,
@@ -47,27 +50,29 @@ export async function POST(request: Request) {
       createdAt: Date.now(),
     };
     list.push(promo);
-    if (promoType === "taxi") promos.taxi = list;
+    if (target === "taxi") promos.taxi = list;
     else promos.delivery = list;
     writePromos(promos);
     return NextResponse.json({ ok: true, promo });
   }
 
-  if (action === "toggle") {
-    const { id } = payload;
+  // Support "toggle" and "toggle_promo"
+  if (action === "toggle" || action === "toggle_promo") {
+    const { id, active } = payload;
     const idx = list.findIndex((p) => p.id === id);
     if (idx === -1) return NextResponse.json({ error: "not found" }, { status: 404 });
-    list[idx].active = !list[idx].active;
-    if (promoType === "taxi") promos.taxi = list;
+    list[idx].active = active !== undefined ? active : !list[idx].active;
+    if (target === "taxi") promos.taxi = list;
     else promos.delivery = list;
     writePromos(promos);
     return NextResponse.json({ ok: true });
   }
 
-  if (action === "delete") {
+  // Support "delete" and "delete_promo"
+  if (action === "delete" || action === "delete_promo") {
     const { id } = payload;
     const filtered = list.filter((p) => p.id !== id);
-    if (promoType === "taxi") promos.taxi = filtered;
+    if (target === "taxi") promos.taxi = filtered;
     else promos.delivery = filtered;
     writePromos(promos);
     return NextResponse.json({ ok: true });

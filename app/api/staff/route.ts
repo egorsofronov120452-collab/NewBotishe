@@ -19,11 +19,9 @@ function writeStaff(data: StaffFile) {
 }
 
 export async function GET() {
+  // Return the full raw file (including profiles key) so UI can strip profiles itself
   const raw = readStaff();
-  const members: StaffMember[] = Object.entries(raw)
-    .filter(([k, v]) => k !== "profiles" && typeof v === "object" && v !== null && "uid" in (v as object))
-    .map(([, v]) => v as StaffMember);
-  return NextResponse.json(members);
+  return NextResponse.json(raw);
 }
 
 export async function POST(request: Request) {
@@ -31,14 +29,15 @@ export async function POST(request: Request) {
   const { action, ...payload } = body;
   const staff = readStaff();
 
-  if (action === "add") {
+  // Support both "add" and "add_member"
+  if (action === "add" || action === "add_member") {
     const { uid, nick, bank, role } = payload;
     if (!uid || !nick) return NextResponse.json({ error: "uid+nick required" }, { status: 400 });
     const member: StaffMember = {
       uid: parseInt(uid),
       nick,
       bank: bank || "",
-      role: role || "kurier",
+      role: (role as StaffMember["role"]) || "kurier",
       groups: [],
       vehicles: [],
       orgVehicles: [],
@@ -46,24 +45,28 @@ export async function POST(request: Request) {
       createdAt: Date.now(),
     };
     staff[uid] = member;
+    if (!staff.profiles) staff.profiles = {};
     writeStaff(staff);
     return NextResponse.json({ ok: true, member });
   }
 
-  if (action === "update") {
-    const { uid, ...updates } = payload;
+  // Support "update", "update_role"
+  if (action === "update" || action === "update_role") {
+    const { uid, role, ...updates } = payload;
     if (!uid) return NextResponse.json({ error: "uid required" }, { status: 400 });
     const existing = staff[uid];
     if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
-    staff[uid] = { ...(existing as object), ...updates };
+    const mergeUpdates = role ? { role } : updates;
+    staff[uid] = { ...(existing as object), ...mergeUpdates };
     writeStaff(staff);
     return NextResponse.json({ ok: true });
   }
 
-  if (action === "delete") {
+  // Support "delete" and "delete_member"
+  if (action === "delete" || action === "delete_member") {
     const { uid } = payload;
     if (!uid) return NextResponse.json({ error: "uid required" }, { status: 400 });
-    delete staff[uid];
+    delete staff[String(uid)];
     writeStaff(staff);
     return NextResponse.json({ ok: true });
   }

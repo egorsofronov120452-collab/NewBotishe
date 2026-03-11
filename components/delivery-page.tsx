@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import { Button, Card, Input, Modal, Spinner, Badge, Tabs, Divider } from "@/components/ui-kit";
+import React, { useState, useCallback } from "react";
+import { Button, Card, Input, Spinner, Divider } from "@/components/ui-kit";
+import { useApp } from "@/lib/app-context";
 import type { Catalogue, CatalogueCategory, CatalogueItem, CatalogueSet, BasketItem } from "@/lib/types";
 
 type Step =
@@ -17,6 +18,7 @@ type Step =
   | "done";
 
 export default function DeliveryPage() {
+  const { vkUser } = useApp();
   const [step, setStep] = useState<Step>("menu");
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
   const [catLoading, setCatLoading] = useState(false);
@@ -26,6 +28,7 @@ export default function DeliveryPage() {
   const [promoInput, setPromoInput] = useState("");
   const [promoResult, setPromoResult] = useState<string | null>(null);
   const [addedToast, setAddedToast] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const loadCatalogue = useCallback(async () => {
     if (catalogue) return;
@@ -377,10 +380,33 @@ export default function DeliveryPage() {
           </div>
         </Card>
         <p className="text-sm text-[var(--color-muted-foreground)] text-center text-pretty">
-          Заказ будет оформлен через бот ВКонтакте. Для подтверждения заказа перейдите в бот доставки.
+          Заказ будет создан в системе и принят в обработку.
         </p>
-        <Button variant="positive" fullWidth onClick={() => setStep("done")}>
-          Подтвердить заказ
+        <Button variant="positive" fullWidth disabled={submitting} onClick={async () => {
+          setSubmitting(true);
+          try {
+            await fetch("/api/orders", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "create_order",
+                type: "delivery",
+                clientId: vkUser?.id || 0,
+                nick: vkUser?.id ? `id${vkUser.id}` : "Аноним",
+                address,
+                basket,
+                total: basketTotal,
+                finalPrice: basketTotal,
+                promoDesc: promoResult || null,
+                payment: { type: "cash" },
+              }),
+            });
+            setStep("done");
+          } finally {
+            setSubmitting(false);
+          }
+        }}>
+          {submitting ? "Отправка..." : "Подтвердить заказ"}
         </Button>
       </div>
     );
