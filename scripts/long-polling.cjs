@@ -274,23 +274,38 @@ function isMuted(uid) {
 
 // ─────────────────────────── ROLES ───────────────────────────
 async function getUserRole(uid) {
-  // 1. Check staff profile first — ключ всегда строка в JSON
   const staff = readJSON(STAFF_FILE, {});
-  const key = String(uid);
-  if (staff[key]) return staff[key].role || 'kurier';
+  const key   = String(uid);
 
-  // 2. Fallback: check chat membership via groupKey=1 (все чаты в сообществе 1)
-  for (const [name, pid] of Object.entries(CHATS)) {
-    if (!pid) continue;
+  // Всегда проверяем актуальную роль по членству в чатах (чаты только в сообществе 1)
+  // Приоритет: руководство > СС > курьер/стажёр
+  let detectedRole = null;
+
+  if (CHATS.rukovodstvo) {
     try {
-      const members = await callVK('messages.getConversationMembers', { peer_id: pid }, 1);
-      const found = (members.items || []).some(m => m.member_id === uid);
-      if (found) {
-        if (name === 'rukovodstvo') return 'rs';
-        if (name === 'ss' || name === 'taxiSs') return 'ss';
-      }
+      const m = await callVK('messages.getConversationMembers', { peer_id: CHATS.rukovodstvo }, 1);
+      if ((m.items || []).some(x => x.member_id === uid)) detectedRole = 'rs';
     } catch(_) {}
   }
+  if (!detectedRole && (CHATS.ss || CHATS.taxiSs)) {
+    const chatsToCheck = [CHATS.ss, CHATS.taxiSs].filter(Boolean);
+    for (const pid of chatsToCheck) {
+      try {
+        const m = await callVK('messages.getConversationMembers', { peer_id: pid }, 1);
+        if ((m.items || []).some(x => x.member_id === uid)) { detectedRole = 'ss'; break; }
+      } catch(_) {}
+    }
+  }
+
+  // Если нашли роль по чатам — обновляем профиль
+  if (detectedRole && staff[key] && staff[key].role !== detectedRole) {
+    staff[key].role = detectedRole;
+    writeJSON(STAFF_FILE, staff);
+  }
+
+  // Возвращаем: обновлённую из чатов, или ту что в профиле, или null
+  if (detectedRole) return detectedRole;
+  if (staff[key]) return staff[key].role || 'kurier';
   return null;
 }
 
@@ -818,7 +833,7 @@ async function checkUnacceptedOrder(orderId, type) {
   // Re-notify couriers
   for (const c of onlineCouriers) {
     if (c.uid) {
-      await sendMessage(c.uid, `⚠️ Заказ #${orderId.slice(-6)} ждёт принятия уже 3 минуты!`, {}, 1);
+      await sendMessage(c.uid, `⚠️ Заказ #${orderId.slice(-6)} ждёт принятия уже 3 минут��!`, {}, 1);
     }
   }
 }
@@ -846,9 +861,9 @@ function getOnlineCouriers(type) {
 
 // ─────────────────────────── COURIER: ACCEPT & PURCHASE ───────
 async function handleCourierAcceptOrder(event, orderId) {
-  const uid = event.from_id;
-  const staff = readJSON(STAFF_FILE, {});
-  const profile = staff[uid];
+  const uid     = event.from_id;
+  const staff   = readJSON(STAFF_FILE, {});
+  const profile = staff[String(uid)];
 
   if (!profile) {
     await sendMessage(uid, 'Сначала создайте профиль сотрудника командой в ЛС.', {}, 1);
@@ -1035,16 +1050,19 @@ async function handleGroup1DM(event) {
   }
 
   // ── Admin: catalogue management (РС + СС) ────────────────
+  // Все admin-сессии проверяются ДО обработки кнопок меню,
+  // чтобы активные шаги (ввод названия, цены и т.д.) не терялись.
   if (isSs) {
     const adminResult = await handleAdminCatalogueSession(uid, peerId, text, event);
     if (adminResult) return;
-    // Промокоды и авто — только РС
-    if (isRs) {
-      const adminResult2 = await handleAdminPromosSession(uid, peerId, text, event, role);
-      if (adminResult2) return;
-      const adminResult3 = await handleAdminVehiclesSession(uid, peerId, text, event);
-      if (adminResult3) return;
-    }
+  }
+  if (isRs) {
+    const adminResult2 = await handleAdminPromosSession(uid, peerId, text, event, role);
+    if (adminResult2) return;
+    const adminResult3 = await handleAdminVehiclesSession(uid, peerId, text, event);
+    if (adminResult3) return;
+    const adminResult4 = await handleAdminTaxiPoints(uid, peerId, text, event);
+    if (adminResult4) return;
   }
 
   // ── Staff registration / profile ─────────────────────────
@@ -1144,7 +1162,7 @@ async function handleGroup1DM(event) {
     return;
   }
   if (step === 'change_bank') {
-    if (text === 'Отмена') { sess.step = STAFF_STEP.NONE; storage.staffSessions.set(uid, sess); await showGroup1MainMenu(uid, peerId, staff[staffKey], isSs, isRs, role); return; }
+    if (text === 'Отм��на') { sess.step = STAFF_STEP.NONE; storage.staffSessions.set(uid, sess); await showGroup1MainMenu(uid, peerId, staff[staffKey], isSs, isRs, role); return; }
     staff[staffKey].bank = text;
     writeJSON(STAFF_FILE, staff);
     sess.step = STAFF_STEP.NONE;
@@ -1768,6 +1786,141 @@ async function saveNewPromo(uid, peerId, sess, extra) {
   writeJSON(PROMOS_FILE, promos);
   sess.step = null; storage.adminSessions.set(uid, sess);
   await sendMessage(peerId, `Промокод «${newPromo.code}» создан (${newPromo.type}).`, {}, 1);
+}
+
+// ─────────────────────────── TAXI POINTS ADMIN ────────────────
+// Управление точками маршрута через ЛС группы 1 (РС)
+async function handleAdminTaxiPoints(uid, peerId, text, event) {
+  const sess = storage.adminSessions.get(uid) || { step: null, data: {} };
+  const step = sess.step;
+
+  if (text === 'Управление точками такси') {
+    const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
+    if (!Array.isArray(tp.categories)) tp.categories = [];
+    if (!Array.isArray(tp.points))     tp.points = [];
+    const catLines = tp.categories.map(c => {
+      const cnt = tp.points.filter(p => p.categoryId === c.id).length;
+      return `• ${c.name} (${cnt} точек)`;
+    }).join('\n') || '(нет категорий)';
+    await sendMessage(peerId,
+      `Точки маршрута такси:\n${catLines}\n\nВсего точек: ${tp.points.length}`,
+      { keyboard: msgKb([
+        [{ label: 'Добавить категорию точек', color: 'positive' }],
+        [{ label: 'Добавить точку', color: 'positive' }],
+        [{ label: 'Удалить категорию точек', color: 'negative' }, { label: 'Удалить точку', color: 'negative' }],
+        [{ label: 'Главное меню', color: 'secondary' }],
+      ]) }, 1);
+    return true;
+  }
+
+  if (text === 'Добавить категорию точек') {
+    sess.step = 'tp_add_cat'; storage.adminSessions.set(uid, sess);
+    await sendMessage(peerId, 'Введите название категории (например: Центр, Аэропорт, Жилые районы):', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
+    return true;
+  }
+  if (step === 'tp_add_cat') {
+    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', {}, 1); return true; }
+    const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
+    if (!Array.isArray(tp.categories)) tp.categories = [];
+    if (!Array.isArray(tp.points))     tp.points = [];
+    tp.categories.push({ id: genId(), name: text });
+    writeJSON(TAXI_POINTS_FILE, tp);
+    sess.step = null; storage.adminSessions.set(uid, sess);
+    await sendMessage(peerId, `Категория «${text}» добавлена.`, { keyboard: msgKb([[{ label: 'Управление точками такси', color: 'primary' }, { label: 'Главное меню', color: 'secondary' }]]) }, 1);
+    return true;
+  }
+
+  if (text === 'Добавить точку') {
+    const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
+    if (!Array.isArray(tp.categories)) tp.categories = [];
+    if (!tp.categories.length) {
+      await sendMessage(peerId, 'Сначала создайте хотя бы одну категорию.', { keyboard: msgKb([[{ label: 'Добавить категорию точек', color: 'positive' }]]) }, 1);
+      return true;
+    }
+    sess.step = 'tp_add_point_cat'; storage.adminSessions.set(uid, sess);
+    const rows = tp.categories.map(c => [{ label: c.name }]);
+    rows.push([{ label: 'Отмена', color: 'negative' }]);
+    await sendMessage(peerId, 'Выберите категорию для новой точки:', { keyboard: msgKb(rows) }, 1);
+    return true;
+  }
+  if (step === 'tp_add_point_cat') {
+    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', {}, 1); return true; }
+    const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
+    if (!Array.isArray(tp.categories)) tp.categories = [];
+    const cat = tp.categories.find(c => c.name === text);
+    if (!cat) return false;
+    sess.data.tpCatId = cat.id; sess.step = 'tp_add_point_name'; storage.adminSessions.set(uid, sess);
+    await sendMessage(peerId, `Категория: ${text}\nВведите название точки (адрес/место):`, { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
+    return true;
+  }
+  if (step === 'tp_add_point_name') {
+    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', {}, 1); return true; }
+    sess.data.tpPointName = text; sess.step = 'tp_add_point_price'; storage.adminSessions.set(uid, sess);
+    await sendMessage(peerId, `Точка: «${text}»\nВведите базовую стоимость из этой точки (число, например 150):`, { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
+    return true;
+  }
+  if (step === 'tp_add_point_price') {
+    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', {}, 1); return true; }
+    const price = parseInt(text);
+    if (isNaN(price) || price < 0) { await sendMessage(peerId, 'Введите корректное число (цену).', {}, 1); return true; }
+    const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
+    if (!Array.isArray(tp.points)) tp.points = [];
+    tp.points.push({ id: genId(), categoryId: sess.data.tpCatId, name: sess.data.tpPointName, basePrice: price });
+    writeJSON(TAXI_POINTS_FILE, tp);
+    sess.step = null; storage.adminSessions.set(uid, sess);
+    await sendMessage(peerId, `Точка «${sess.data.tpPointName}» (${price}р.) добавлена.`, { keyboard: msgKb([[{ label: 'Управление точками такси', color: 'primary' }, { label: 'Добавить точку', color: 'positive' }], [{ label: 'Главное меню', color: 'secondary' }]]) }, 1);
+    return true;
+  }
+
+  if (text === 'Удалить категорию точек') {
+    const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
+    if (!Array.isArray(tp.categories)) tp.categories = [];
+    if (!tp.categories.length) { await sendMessage(peerId, 'Нет категорий для удаления.', {}, 1); return true; }
+    sess.step = 'tp_del_cat'; storage.adminSessions.set(uid, sess);
+    const rows = tp.categories.map(c => [{ label: c.name }]);
+    rows.push([{ label: 'Отмена', color: 'negative' }]);
+    await sendMessage(peerId, 'Выберите категорию для удаления (точки внутри тоже удалятся):', { keyboard: msgKb(rows) }, 1);
+    return true;
+  }
+  if (step === 'tp_del_cat') {
+    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', {}, 1); return true; }
+    const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
+    if (!Array.isArray(tp.categories)) tp.categories = [];
+    if (!Array.isArray(tp.points))     tp.points = [];
+    const cat = tp.categories.find(c => c.name === text);
+    if (!cat) { sess.step = null; storage.adminSessions.set(uid, sess); return true; }
+    tp.categories = tp.categories.filter(c => c.id !== cat.id);
+    tp.points     = tp.points.filter(p => p.categoryId !== cat.id);
+    writeJSON(TAXI_POINTS_FILE, tp);
+    sess.step = null; storage.adminSessions.set(uid, sess);
+    await sendMessage(peerId, `Категория «${text}» и все её точки удалены.`, { keyboard: msgKb([[{ label: 'Управление точками такси', color: 'primary' }, { label: 'Главное меню', color: 'secondary' }]]) }, 1);
+    return true;
+  }
+
+  if (text === 'Удалить точку') {
+    const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
+    if (!Array.isArray(tp.points)) tp.points = [];
+    if (!tp.points.length) { await sendMessage(peerId, 'Нет точек для удаления.', {}, 1); return true; }
+    sess.step = 'tp_del_point'; storage.adminSessions.set(uid, sess);
+    const rows = tp.points.map(p => [{ label: p.name }]);
+    rows.push([{ label: 'Отмена', color: 'negative' }]);
+    await sendMessage(peerId, 'Выберите точку для удаления:', { keyboard: msgKb(rows) }, 1);
+    return true;
+  }
+  if (step === 'tp_del_point') {
+    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', {}, 1); return true; }
+    const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
+    if (!Array.isArray(tp.points)) tp.points = [];
+    const pt = tp.points.find(p => p.name === text);
+    if (!pt) { sess.step = null; storage.adminSessions.set(uid, sess); return true; }
+    tp.points = tp.points.filter(p => p.id !== pt.id);
+    writeJSON(TAXI_POINTS_FILE, tp);
+    sess.step = null; storage.adminSessions.set(uid, sess);
+    await sendMessage(peerId, `Точка «${text}» удалена.`, { keyboard: msgKb([[{ label: 'Управление точками такси', color: 'primary' }, { label: 'Главное меню', color: 'secondary' }]]) }, 1);
+    return true;
+  }
+
+  return false;
 }
 
 // ─────────────────────────── TAXI: GROUP 3 DMs ────────────────
