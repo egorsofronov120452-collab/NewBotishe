@@ -1046,9 +1046,6 @@ async function handleGroup1DM(event) {
       { keyboard: msgKb([[{ label: 'Регистрация', color: 'positive' }]]) }, 1);
     return;
   }
-    await sendMessage(peerId, 'Для начала работы введите «Регистрация».', {}, 1);
-    return;
-  }
 
   if (step === STAFF_STEP.REG_NICK) {
     sess.data.nick = text;
@@ -1472,7 +1469,7 @@ async function handleAdminCatalogueSession(uid, peerId, text, event) {
       }).filter(Boolean);
     }
     sess.data.subItems = subItems; sess.step = 'admin_item_instruction'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Пришлите фото-инструкцию для курьера (или «Пропустить»):', { keyboard: msgKb([[{ label: 'Пропустить' }]]) }, 1);
+    await sendMessage(peerId, 'Пришлите фото-инструкцию для курьера (или «Пропустить»):', { keyboard: msgKb([[{ label: 'Пропус��ить' }]]) }, 1);
     return true;
   }
   if (step === 'admin_item_instruction') {
@@ -2002,7 +1999,7 @@ async function showTaxiPointCats(peerId, prompt, uid, groupKey) {
 
 async function showTaxiConfirm(peerId, uid, sess, groupKey) {
   const passText = sess.data.passengers?.length ? `\nПопутчики: ${sess.data.passengers.join(', ')}` : '';
-  const payText  = sess.data.payment.type === 'cash' ? 'Наличными' : sess.data.payment.type === 'phone' ? 'Счёт телефона' : 'Банковский счёт';
+  const payText  = sess.data.payment.type === 'cash' ? 'Наличными' : sess.data.payment.type === 'phone' ? 'Счёт телефона' : 'Банковский счё��';
   const promoText = sess.data.promoDesc ? `\nПромокод: ${sess.data.promoDesc}` : '';
   await sendMessage(peerId,
     `Проверьте заказ:\n\nНик: ${sess.data.nick}${passText}\nОткуда: ${sess.data.from.name}\nКуда: ${sess.data.to.name}\nОплата: ${payText}\nСтоимость: ${sess.data.finalPrice}р.${promoText}\n\nВсё верно?`,
@@ -2090,7 +2087,7 @@ async function handleTaxiPointAdmin(uid, peerId, text, event) {
   }
   if (step === 'taxi_pt_name') {
     sess.data.ptName = text; sess.step = 'taxi_pt_price'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите базовую цену от этой точки (в рублях, для ориентира):', {}, 1);
+    await sendMessage(peerId, 'Введите базовую цену ��т этой точки (в рублях, для ориентира):', {}, 1);
     return true;
   }
   if (step === 'taxi_pt_price') {
@@ -2143,10 +2140,11 @@ function journalKeyboard() {
 }
 
 // ─────────────────────────── ACTIVITY JOURNAL ─────────────────
-async function handleJournalMessage(event) {
+async function handleJournalMessage(event, groupKey) {
   const rawText = (event.text || '').trim();
   const uid     = event.from_id;
   const peerId  = event.peer_id;
+  const gk      = groupKey || 1;
 
   // Допустимые команды журнала: !онлайн, !афк, !вышел, !стата
   const journalCmds = ['!онлайн', '!афк', '!вышел', '!стата'];
@@ -2160,7 +2158,7 @@ async function handleJournalMessage(event) {
 
   // !стата делегируем
   if (cmd === '!стата') {
-    await handleStatsCommand(event);
+    await handleStatsCommand(event, gk);
     return true;
   }
 
@@ -2257,7 +2255,7 @@ async function handleJournalMessage(event) {
   else                        actionText = `${nick} [${roleAbbr}] завершил смену.`;
 
   // Отправляем с постоянной клавиатурой кнопок !онлайн / !афк / !вышел
-  await sendMessage(peerId, `${actionText}\n\n${serverList}`, { keyboard: journalKeyboard() }, 1);
+  await sendMessage(peerId, `${actionText}\n\n${serverList}`, { keyboard: journalKeyboard() }, gk);
   return true;
 }
 
@@ -2285,49 +2283,51 @@ function buildServerList() {
 }
 
 function updateOnlineStats(uid, durationMs) {
-  const oj = readJSON(ONLINE_FILE, { sessions: {}, stats: {} });
-  if (!oj.stats[uid]) oj.stats[uid] = { totalMs: 0, sessions: [], weeklyMs: {} };
-  oj.stats[uid].totalMs = (oj.stats[uid].totalMs || 0) + durationMs;
+  const key = String(uid);
+  const oj  = readJSON(ONLINE_FILE, { sessions: {}, stats: {} });
+  if (!oj.stats)       oj.stats = {};
+  if (!oj.stats[key])  oj.stats[key] = { totalMs: 0, weeklyMs: {} };
+  if (!oj.stats[key].weeklyMs) oj.stats[key].weeklyMs = {};
+  oj.stats[key].totalMs = (oj.stats[key].totalMs || 0) + durationMs;
 
   const dayKey = new Date().toISOString().slice(0, 10);
-  if (!oj.stats[uid].weeklyMs) oj.stats[uid].weeklyMs = {};
-  oj.stats[uid].weeklyMs[dayKey] = (oj.stats[uid].weeklyMs[dayKey] || 0) + durationMs;
+  oj.stats[key].weeklyMs[dayKey] = (oj.stats[key].weeklyMs[dayKey] || 0) + durationMs;
 
   writeJSON(ONLINE_FILE, oj);
 }
 
-async function handleStatsCommand(event) {
+async function handleStatsCommand(event, groupKey) {
   const text   = (event.text || '').trim();
   const uid    = event.from_id;
   const peerId = event.peer_id;
+  const gk     = groupKey || 1; // используем переданный токен, иначе группа 1
 
   if (text.toLowerCase() !== '!стата') return;
 
-  const oj = readJSON(ONLINE_FILE, { sessions: {}, stats: {} });
-  const myStats = oj.stats[uid];
-  if (!myStats) { await sendMessage(peerId, 'Статистика не найдена.', {}, 1); return; }
+  const key = String(uid);
+  const oj  = readJSON(ONLINE_FILE, { sessions: {}, stats: {} });
+  if (!oj.stats) oj.stats = {};
+  const myStats = oj.stats[key];
+  if (!myStats) { await sendMessage(peerId, 'Статистика не найдена. Выйдите на смену через !онлайн.', { keyboard: journalKeyboard() }, gk); return; }
 
-  const totalMs = myStats.totalMs || 0;
+  const totalMs  = myStats.totalMs || 0;
   const todayKey = new Date().toISOString().slice(0, 10);
-  const todayMs = (myStats.weeklyMs || {})[todayKey] || 0;
+  const todayMs  = (myStats.weeklyMs || {})[todayKey] || 0;
 
-  // Week total
   const weekStart = getWeekStart();
   let weekMs = 0;
   for (const [day, ms] of Object.entries(myStats.weeklyMs || {})) {
     if (day >= weekStart) weekMs += ms;
   }
 
-  // Top by online this week
   const weekRanking = buildWeekRanking(weekStart);
-  const myRank = weekRanking.findIndex(r => String(r.uid) === String(uid)) + 1;
+  const myRank      = weekRanking.findIndex(r => r.uid === key) + 1;
 
-  // Count messages (approximated — just say N/A if not tracked)
   const msgCount = myStats.msgCount || 0;
 
-  const text2 = `Статистика:\n\nВсего онлайн: ${msToHuman(totalMs)}\nОнлайн сегодня: ${msToHuman(todayMs)}\nОнлайн за неделю: ${msToHuman(weekMs)}\nТоп по онлайну за неделю: ${myRank || '—'} место${msgCount ? `\nКол-во сообщений: ${msgCount}` : ''}`;
+  const text2 = `Статистика:\n\nВсего онлайн: ${msToHuman(totalMs)}\nОнлайн сегодня: ${msToHuman(todayMs)}\nОнлайн за неделю: ${msToHuman(weekMs)}\nТоп по онлайну за неделю: ${myRank > 0 ? myRank + ' место' : '—'}${msgCount ? `\nСообщений: ${msgCount}` : ''}`;
 
-  await sendMessage(peerId, text2, {}, 1);
+  await sendMessage(peerId, text2, { keyboard: journalKeyboard() }, gk);
 }
 
 function getWeekStart() {
@@ -2342,11 +2342,12 @@ function buildWeekRanking(weekStart) {
   const oj = readJSON(ONLINE_FILE, { stats: {} });
   const ranking = [];
   for (const [uid, stats] of Object.entries(oj.stats || {})) {
+    if (!stats || typeof stats !== 'object') continue;
     let weekMs = 0;
     for (const [day, ms] of Object.entries(stats.weeklyMs || {})) {
-      if (day >= weekStart) weekMs += ms;
+      if (day >= weekStart) weekMs += (ms || 0);
     }
-    if (weekMs > 0) ranking.push({ uid, weekMs });
+    if (weekMs > 0) ranking.push({ uid: String(uid), weekMs });
   }
   ranking.sort((a, b) => b.weekMs - a.weekMs);
   return ranking;
@@ -2544,9 +2545,9 @@ async function handleChatCommand(event, groupKey) {
     return true;
   }
 
-  // !стата — handled in journal context too, but allow in any chat
+  // !стата — работает в любом чате с правильным токеном группы
   if (cmd === '!стата') {
-    await handleStatsCommand(event);
+    await handleStatsCommand(event, groupKey);
     return true;
   }
 
@@ -2617,7 +2618,7 @@ async function handleChatCommand(event, groupKey) {
     }
     if (!targetId || targetId <= 0) {
       await sendMessage(peerId,
-        'Укажите пользователя. Использование:\n!кик (ответом) [все|доставка|такси] [причина]\n!кик @id [все|доставка|такси] [причина]',
+        'Укажите пользователя. Использование:\n!кик (ответом) [все|доставка|такси] [причина]\n!кик @id [все|��оставка|такси] [причина]',
         {}, groupKey);
       return true;
     }
@@ -2986,7 +2987,7 @@ async function handleEvent(event, groupKey) {
       // Журнал активности — только этот чат обрабатывает !онлайн/!афк/!вышел/!стата
       // !стата также доступна во всех чатах через handleChatCommand
       if (peerId === CHATS.zhurnal) {
-        await handleJournalMessage(msg); // включает !стата
+        await handleJournalMessage(msg, groupKey); // включает !стата
         return;
       }
 
