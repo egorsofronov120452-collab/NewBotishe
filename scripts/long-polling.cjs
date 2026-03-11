@@ -274,15 +274,16 @@ function isMuted(uid) {
 
 // ─────────────────────────── ROLES ───────────────────────────
 async function getUserRole(uid) {
-  // 1. Check staff profile first
+  // 1. Check staff profile first — ключ всегда строка в JSON
   const staff = readJSON(STAFF_FILE, {});
-  if (staff[uid]) return staff[uid].role || 'kurier';
+  const key = String(uid);
+  if (staff[key]) return staff[key].role || 'kurier';
 
-  // 2. Fallback: check chat membership
+  // 2. Fallback: check chat membership via groupKey=1 (все чаты в сообществе 1)
   for (const [name, pid] of Object.entries(CHATS)) {
     if (!pid) continue;
     try {
-      const members = await callVK('messages.getConversationMembers', { peer_id: pid });
+      const members = await callVK('messages.getConversationMembers', { peer_id: pid }, 1);
       const found = (members.items || []).some(m => m.member_id === uid);
       if (found) {
         if (name === 'rukovodstvo') return 'rs';
@@ -306,7 +307,14 @@ async function hasPermission(uid, peerId, requiredRoles) {
 function isAdmin(uid, peerId) { return hasPermission(uid, peerId, ['rs']); }
 
 // ─────────────────────────── CATALOGUE HELPERS ────────────────
-function loadCatalogue() { return readJSON(CATALOGUE_FILE, { categories: [], items: [], sets: [] }); }
+function loadCatalogue() {
+  const cat = readJSON(CATALOGUE_FILE, { categories: [], items: [], sets: [] });
+  // Гарантируем что все поля существуют (защита от повреждённого файла)
+  if (!Array.isArray(cat.categories)) cat.categories = [];
+  if (!Array.isArray(cat.items))      cat.items = [];
+  if (!Array.isArray(cat.sets))       cat.sets = [];
+  return cat;
+}
 function saveCatalogue(c) { writeJSON(CATALOGUE_FILE, c); }
 
 function buildBasketText(items) {
@@ -758,9 +766,9 @@ async function showOrderItems(peerId, uid, sess, category, cat, groupKey) {
 function getItemsForCategory(cat, category) {
   if (!category) return [];
   if (category.id === 'sets') {
-    return cat.sets.map(s => ({ ...s, id: 'set_'+s.id }));
+    return (cat.sets || []).map(s => ({ ...s, id: 'set_'+s.id }));
   }
-  return cat.items.filter(it => it.categoryId === category.id);
+  return (cat.items || []).filter(it => it.categoryId === category.id);
 }
 
 async function showBasket(peerId, uid, sess, groupKey) {
@@ -819,14 +827,18 @@ function getOnlineCouriers(type) {
   const staff = readJSON(STAFF_FILE, {});
   const result = [];
   storage.online.forEach((info, uid) => {
-    const profile = staff[uid];
+    const profile = staff[String(uid)];
     if (!profile) return;
-    const inDelivery = profile.groups && profile.groups.includes('delivery');
-    const inTaxi     = profile.groups && profile.groups.includes('taxi');
-    if (type === 'delivery' && !inDelivery) return;
-    if (type === 'taxi' && !inTaxi) return;
-    if (info.online && info.status !== 'afk') {
-      result.push({ uid, nick: info.nick, role: info.role });
+    // groups определяет организацию сотрудника: ['delivery'], ['taxi'], или обе
+    const groups = profile.groups || [];
+    const inDelivery = groups.includes('delivery');
+    const inTaxi     = groups.includes('taxi');
+    // Если groups пуст — считаем курьера принадлежащим delivery по умолчанию
+    const effectiveDelivery = inDelivery || (!inTaxi && groups.length === 0);
+    if (type === 'delivery' && !effectiveDelivery) return;
+    if (type === 'taxi'     && !inTaxi)            return;
+    if (info.online && !info.afk) {
+      result.push({ uid: String(uid), nick: info.nick, role: info.role });
     }
   });
   return result;
@@ -959,11 +971,12 @@ async function handleGroup1DM(event) {
   const text   = (event.text || '').trim();
   const peerId = event.peer_id; // same as uid for DMs
 
-  const staff = readJSON(STAFF_FILE, {});
-  const role  = await getUserRole(uid);
-  const isRs  = role === 'rs';
-  const isSs  = role === 'ss' || isRs;
-  const profile = staff[uid];
+  const staff   = readJSON(STAFF_FILE, {});
+  const staffKey = String(uid); // JSON keys are always strings
+  const role    = await getUserRole(uid);
+  const isRs    = role === 'rs';
+  const isSs    = role === 'ss' || isRs;
+  const profile  = staff[staffKey];
 
   const sess = storage.staffSessions.get(uid) || { step: STAFF_STEP.NONE, data: {} };
   const step = sess.step;
@@ -1059,13 +1072,13 @@ async function handleGroup1DM(event) {
     sess.data.bank = text;
     // Save profile
     const newProfile = {
-      uid, nick: sess.data.nick, bank: sess.data.bank,
+      uid: staffKey, nick: sess.data.nick, bank: sess.data.bank,
       role: 'kurier', groups: [],
       vehicles: [], orgVehicles: [],
       stats: { deliveryOrders: 0, taxiOrders: 0 },
       createdAt: Date.now(),
     };
-    staff[uid] = newProfile;
+    staff[staffKey] = newProfile;
     writeJSON(STAFF_FILE, staff);
     sess.step = STAFF_STEP.NONE;
     storage.staffSessions.set(uid, sess);
@@ -1095,7 +1108,7 @@ async function handleGroup1DM(event) {
   if (text === 'Мой профиль' || text === 'профиль') {
     const cars    = (profile.vehicles || []).map(v => `  • ${v.name}${v.isOrg ? ' [орг]' : ''}${v.brandColor ? ' [фирм.]' : ''}`).join('\n');
     const orgCars = (profile.orgVehicles || []).map(v => `  • ${v.name}`).join('\n');
-    const text2   = `Профиль сотрудника:\n\nНик: ${profile.nick}\nБанк. счёт: ${profile.bank}\nРоль: ${profile.role}\n\nЛичный автопарк:\n${cars || '  (нет)'}\nАвто организации:\n${orgCars || '  (нет)'}\n\nСтатистика:\n  Заказы доставки: ${profile.stats?.deliveryOrders || 0}\n  Заказы такси: ${profile.stats?.taxiOrders || 0}`;
+    const text2   = `Профиль сотрудника:\n\nНик: ${profile.nick}\nБанк. счёт: ${profile.bank}\nРоль: ${profile.role}\n\nЛичный автопарк:\n${cars || '  (нет)'}\n��вто организации:\n${orgCars || '  (нет)'}\n\nСтатистика:\n  Заказы доставки: ${profile.stats?.deliveryOrders || 0}\n  Заказы такси: ${profile.stats?.taxiOrders || 0}`;
     await sendMessage(peerId, text2, { keyboard: msgKb([
       [{ label: 'Автопарк', color: 'secondary' }, { label: 'Изменить ник', color: 'secondary' }, { label: 'Изменить счёт', color: 'secondary' }],
       [{ label: 'Главное меню', color: 'secondary' }],
@@ -1115,8 +1128,8 @@ async function handleGroup1DM(event) {
     return;
   }
   if (step === 'change_nick') {
-    if (text === 'Отмена') { sess.step = STAFF_STEP.NONE; storage.staffSessions.set(uid, sess); await showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role); return; }
-    profile.nick = text;
+    if (text === 'Отмена') { sess.step = STAFF_STEP.NONE; storage.staffSessions.set(uid, sess); await showGroup1MainMenu(uid, peerId, staff[staffKey], isSs, isRs, role); return; }
+    staff[staffKey].nick = text;
     writeJSON(STAFF_FILE, staff);
     sess.step = STAFF_STEP.NONE;
     storage.staffSessions.set(uid, sess);
@@ -1131,8 +1144,8 @@ async function handleGroup1DM(event) {
     return;
   }
   if (step === 'change_bank') {
-    if (text === 'Отмена') { sess.step = STAFF_STEP.NONE; storage.staffSessions.set(uid, sess); await showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role); return; }
-    profile.bank = text;
+    if (text === 'Отмена') { sess.step = STAFF_STEP.NONE; storage.staffSessions.set(uid, sess); await showGroup1MainMenu(uid, peerId, staff[staffKey], isSs, isRs, role); return; }
+    staff[staffKey].bank = text;
     writeJSON(STAFF_FILE, staff);
     sess.step = STAFF_STEP.NONE;
     storage.staffSessions.set(uid, sess);
@@ -1170,14 +1183,47 @@ async function handleGroup1DM(event) {
     return;
   }
 
-  // Admin commands
-  if (isRs || isSs) {
-    if (text.startsWith('Добавить категорию') || text.startsWith('Добавить товар') || text.startsWith('Добавить сет') ||
-        text.startsWith('Управление каталогом') || text.startsWith('Управление промокодами') ||
-        text.startsWith('Управление авто')) {
-      await handleAdminCommand(uid, peerId, text, role);
-      return;
-    }
+  // Кнопка «Управление каталогом» — показываем подменю CRUD
+  if (isSs && text === 'Управление каталогом') {
+    const cat = loadCatalogue();
+    const catList = cat.categories.map(c => `• ${c.name} (${cat.items.filter(i => i.categoryId === c.id).length} товаров)`).join('\n') || '(нет категорий)';
+    await sendMessage(peerId,
+      `Каталог:\n${catList}\n\nСеты: ${cat.sets.length}`,
+      { keyboard: msgKb([
+        [{ label: 'Добавить категорию', color: 'positive' }, { label: 'Удалить категорию', color: 'negative' }],
+        [{ label: 'Добавить товар', color: 'positive' },     { label: 'Удалить товар', color: 'negative' }],
+        [{ label: 'Добавить сет', color: 'positive' },       { label: 'Удалить сет', color: 'negative' }],
+        [{ label: 'Главное меню', color: 'secondary' }],
+      ]) }, 1);
+    return;
+  }
+
+  // Кнопка «Управление промокодами»
+  if (isRs && text === 'Управление промокодами') {
+    const promos = readJSON(PROMOS_FILE, { delivery: [], taxi: [] });
+    const dList = promos.delivery.map(p => `• ${p.code} — ${p.type === 'percent' ? p.value+'%' : p.value+'р.'}`).join('\n') || '(нет)';
+    const tList = promos.taxi.map(p => `• ${p.code} — ${p.type === 'percent' ? p.value+'%' : p.value+'р.'}`).join('\n') || '(нет)';
+    await sendMessage(peerId,
+      `Промокоды доставки:\n${dList}\n\nПромокоды такси:\n${tList}`,
+      { keyboard: msgKb([
+        [{ label: 'Добавить промокод доставки', color: 'positive' }],
+        [{ label: 'Добавить промокод такси', color: 'positive' }],
+        [{ label: 'Удалить промокод', color: 'negative' }],
+        [{ label: 'Главное меню', color: 'secondary' }],
+      ]) }, 1);
+    return;
+  }
+
+  // Кнопка «Управление авто»
+  if (isRs && text === 'Управление авто') {
+    const adminResult3 = await handleAdminVehiclesSession(uid, peerId, text, event);
+    if (adminResult3) return;
+  }
+
+  // Кнопка «Управление точками такси»
+  if (isRs && text === 'Управление точками такси') {
+    const adminResult4 = await handleAdminTaxiPoints(uid, peerId, text, event);
+    if (adminResult4) return;
   }
 
   // Default — нераспознанный текст, показываем меню
@@ -1295,6 +1341,7 @@ async function handleStaffVehicleAdd(uid, peerId, text, event) {
 
   if (text === 'Добавить личное авто') {
     const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
+    if (!vehicles.catalog) vehicles.catalog = [];
     if (!vehicles.catalog.length) { await sendMessage(peerId, 'В каталоге нет авто. Обратитесь к руководству.', {}, 1); return true; }
     sess.step = 'staff_veh_select'; storage.staffSessions.set(uid, sess);
     const rows = vehicles.catalog.map(v => [{ label: v.name }]);
@@ -1897,7 +1944,7 @@ async function handleTaxiDM(event) {
 
   if (sess.step === TAXI_STEP.ORDER_PAYMENT) {
     if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; return; }
-    const payMap = { 'Наличными': { type: 'cash', commission: 0 }, 'Счёт телефона': { type: 'phone', commission: 0.07 }, 'Банковский счёт': { type: 'bank', commission: 0.05 } };
+    const payMap = { 'Наличными': { type: 'cash', commission: 0 }, 'Счёт телефона': { type: 'phone', commission: 0.07 }, '��анковский счёт': { type: 'bank', commission: 0.05 } };
     const pay = payMap[text];
     if (!pay) return;
     sess.data.payment = pay;
