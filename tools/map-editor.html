@@ -582,7 +582,7 @@
       <div class="tab-panel" id="tab-calib">
         <div class="section-title">Калибровка масштаба</div>
         <p style="font-size:11px;color:#94a3b8;margin-bottom:8px;">
-          Размести����������е две метки на карте на известном расстоянии (например, 1 км).
+          Размести������������е две метки на карте на известном расстоянии (например, 1 км).
           Бот будет использовать это для расчёта цены поездки.
         </p>
         <button class="btn btn-warning" id="calib-start-btn">Поставить точку A</button>
@@ -748,7 +748,7 @@
       img.src = url;
     }
 
-    // ─────────────────────── CANVAS ───────────────────────────────
+    // ──────────────���──────── CANVAS ───────────────────────────────
     const canvas = document.getElementById('map-canvas');
     const ctx = canvas.getContext('2d');
     function resizeCanvas() {
@@ -1047,6 +1047,16 @@
         state.roadNodes.push({ id: nodeId, x: Math.round(wx), y: Math.round(wy) });
       }
 
+      console.log('[v0] placeRoadNode', {
+        wx: Math.round(wx), wy: Math.round(wy),
+        prevPenNodeId: state.penNodeId,
+        snapN: snapN ? snapN.id : null,
+        newNodeId: nodeId,
+        zoom: state.zoom,
+        panX: Math.round(state.panX), panY: Math.round(state.panY),
+        mapImage: !!state.mapImage,
+      });
+
       // If pen is down, draw an edge from penNodeId → nodeId
       if (state.penNodeId && state.penNodeId !== nodeId) {
         state.roadEdges.push({
@@ -1063,6 +1073,7 @@
       // Always advance the pen — must not be inside the if-block above so that
       // even if save()/renderRoadGraph() somehow throw, the pen still moves forward.
       state.penNodeId = nodeId;
+      console.log('[v0] penNodeId updated to', nodeId);
       redraw();
     }
 
@@ -1140,6 +1151,7 @@
 
       // Left click — road drawing
       if (state.roadDrawing) {
+        console.log('[v0] mousedown road', { sx, sy, wx: Math.round(w.x), wy: Math.round(w.y), rect: { left: canvas.getBoundingClientRect().left, top: canvas.getBoundingClientRect().top, w: canvas.getBoundingClientRect().width, h: canvas.getBoundingClientRect().height }, canvasWH: { w: canvas.width, h: canvas.height } });
         placeRoadNode(w.x, w.y); return;
       }
 
@@ -1252,7 +1264,7 @@
       document.getElementById('snap-radius-label').textContent = state.snapRadius;
     });
 
-    // ─────────────────────── ROAD TYPE PRESETS ────────────────────
+    // ────��────────────────── ROAD TYPE PRESETS ────────────────────
     document.querySelectorAll('.road-type-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.road-type-btn').forEach(b => {
@@ -1323,7 +1335,7 @@
         for (const node of state.roadNodes) {
           const cnt = state.roadEdges.filter(e => e.from === node.id || e.to === node.id).length;
           const el = document.createElement('div'); el.className = 'road-item';
-          const markerLabel = node.marker === 'radar' ? ' · <span style="color:#ef4444">Радар</span>' : node.marker === 'light' ? ' · <span style="color:#22c55e">Светофор</span>' : '';
+          const markerLabel = node.marker === 'radar' ? ' · <span style="color:#ef4444">Ра��ар</span>' : node.marker === 'light' ? ' · <span style="color:#22c55e">Светофор</span>' : '';
           el.innerHTML = `<div class="road-item-info">(${Math.round(node.x)}, ${Math.round(node.y)})<span>${cnt} сегм.${markerLabel}</span></div>
         <button class="layer-del" data-action="del-node" data-id="${node.id}">Удалить</button>`;
           nodesEl.appendChild(el);
@@ -1561,7 +1573,7 @@
       reader.readAsDataURL(file); e.target.value = '';
     });
 
-    // ─────────────────────── RENDER ALL ───────────────────────────
+    // ─────────────────────── RENDER ALL ���──────────────────────────
     function renderAll() { renderCatList(); renderPointsList(); redraw(); }
 
     // ─────────────────────── INIT ─────────────────────────────────
