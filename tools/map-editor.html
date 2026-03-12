@@ -582,7 +582,7 @@
       <div class="tab-panel" id="tab-calib">
         <div class="section-title">Калибровка масштаба</div>
         <p style="font-size:11px;color:#94a3b8;margin-bottom:8px;">
-          Размести��е две метки на карте на известном расстоянии (например, 1 км).
+          Размести����е две метки на карте на известном расстоянии (например, 1 км).
           Бот будет использовать это для расчёта цены поездки.
         </p>
         <button class="btn btn-warning" id="calib-start-btn">Поставить точку A</button>
@@ -915,10 +915,11 @@
     // ─────────────────────── HELPERS ──────────────────────────────
     const nodeById = id => state.roadNodes.find(n => n.id === id);
 
-    function findSnapNode(wx, wy, screenRadius) {
+    function findSnapNode(wx, wy, screenRadius, excludeId = null) {
       const worldRadius = screenRadius / state.zoom;
       let best = null, bestD = worldRadius;
       for (const n of state.roadNodes) {
+        if (n.id === excludeId) continue;
         const d = Math.hypot(n.x - wx, n.y - wy);
         if (d < bestD) { bestD = d; best = n; }
       }
@@ -1010,7 +1011,9 @@
 
     // Place or connect a node at world position (wx, wy) during road drawing
     function placeRoadNode(wx, wy) {
-      const snapN = findSnapNode(wx, wy, state.snapRadius);
+      // When the pen is already on a node, never snap back to that same node —
+      // this prevents the "first point repeats forever" bug when clicking nearby.
+      const snapN = findSnapNode(wx, wy, state.snapRadius, state.penNodeId);
       let nodeId;
       if (snapN) {
         nodeId = snapN.id;
