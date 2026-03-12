@@ -582,7 +582,7 @@
       <div class="tab-panel" id="tab-calib">
         <div class="section-title">Калибровка масштаба</div>
         <p style="font-size:11px;color:#94a3b8;margin-bottom:8px;">
-          Размести������е две метки на карте на известном расстоянии (например, 1 км).
+          Размести��������е две метки на карте на известном расстоянии (например, 1 км).
           Бот будет использовать это для расчёта цены поездки.
         </p>
         <button class="btn btn-warning" id="calib-start-btn">Поставить точку A</button>
@@ -695,12 +695,22 @@
 
     // ─────────────────────── PERSISTENCE ──────────────────────────
     function save() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      const data = {
         categories: state.categories, points: state.points,
         roadNodes: state.roadNodes, roadEdges: state.roadEdges,
         calibration: state.calibration, calibPoints: state.calibPoints,
         mapImageUrl: state.mapImageUrl,
-      }));
+      };
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      } catch (e) {
+        // localStorage quota exceeded (likely due to a large map image).
+        // Save everything except the image URL so road/point data is preserved.
+        try {
+          const fallback = { ...data, mapImageUrl: null };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(fallback));
+        } catch (_) { /* nothing we can do */ }
+      }
     }
 
     function load() {
@@ -1032,10 +1042,13 @@
           width: state.drawWidth,
           eppOnly: state.drawEpp,
         });
-        save(); renderRoadGraph();
+        save();
+        renderRoadGraph();
       }
 
-      state.penNodeId = nodeId; // advance pen to this node
+      // Always advance the pen — must not be inside the if-block above so that
+      // even if save()/renderRoadGraph() somehow throw, the pen still moves forward.
+      state.penNodeId = nodeId;
       redraw();
     }
 
@@ -1525,7 +1538,7 @@
       reader.readAsText(file); e.target.value = '';
     });
 
-    // ─────────────────────── MAP IMAGE ────────────────────────────
+    // ───��─────────────────── MAP IMAGE ────────────────────────────
     document.getElementById('load-map-btn').addEventListener('click', () => document.getElementById('map-image-file').click());
     document.getElementById('map-image-file').addEventListener('change', e => {
       const file = e.target.files[0]; if (!file) return;
