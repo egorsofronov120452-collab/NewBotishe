@@ -582,7 +582,7 @@
       <div class="tab-panel" id="tab-calib">
         <div class="section-title">Калибровка масштаба</div>
         <p style="font-size:11px;color:#94a3b8;margin-bottom:8px;">
-          Размести����е две метки на карте на известном расстоянии (например, 1 км).
+          Размести������е две метки на карте на известном расстоянии (например, 1 км).
           Бот будет использовать это для расчёта цены поездки.
         </p>
         <button class="btn btn-warning" id="calib-start-btn">Поставить точку A</button>
@@ -839,12 +839,13 @@
         }
       }
 
-      // In-progress drawing line
+      // In-progress drawing line — snap to target node when near one
       if (state.roadDrawing && state.penNodeId && state._cursorPt) {
         const penNode = nodeById(state.penNodeId);
         if (penNode) {
           const col = document.getElementById('draw-road-color')?.value || '#94a3b8';
-          drawPolyline([penNode, state._cursorPt], col, 2, true, 0.7);
+          const endPt = state._snapTarget || state._cursorPt;
+          drawPolyline([penNode, endPt], col, 2, true, 0.7);
         }
       }
 
@@ -1175,7 +1176,9 @@
 
       if (state.roadDrawing) {
         state._cursorPt = { x: w.x, y: w.y };
-        state._snapTarget = findSnapNode(w.x, w.y, state.snapRadius);
+        // Exclude the current pen node so the preview line never snaps back
+        // to the node we just came from — matches the logic in placeRoadNode().
+        state._snapTarget = findSnapNode(w.x, w.y, state.snapRadius, state.penNodeId);
         redraw(); return;
       }
     });
