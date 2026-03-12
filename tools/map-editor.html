@@ -582,7 +582,7 @@
       <div class="tab-panel" id="tab-calib">
         <div class="section-title">Калибровка масштаба</div>
         <p style="font-size:11px;color:#94a3b8;margin-bottom:8px;">
-          Размести��������е две метки на карте на известном расстоянии (например, 1 км).
+          Размести����������е две метки на карте на известном расстоянии (например, 1 км).
           Бот будет использовать это для расчёта цены поездки.
         </p>
         <button class="btn btn-warning" id="calib-start-btn">Поставить точку A</button>
@@ -728,9 +728,23 @@
       } catch (e) { }
     }
 
-    function loadImageFromUrl(url) {
+    function loadImageFromUrl(url, fitView = false) {
       const img = new Image(); img.crossOrigin = 'anonymous';
-      img.onload = () => { state.mapImage = img; state.mapImageUrl = url; redraw(); };
+      img.onload = () => {
+        state.mapImage = img;
+        state.mapImageUrl = url;
+        if (fitView) {
+          // Fit the image into the canvas with a small margin so zoom starts
+          // at a sensible value and the snap radius stays reasonable.
+          const margin = 40;
+          const scaleX = (canvas.width - margin * 2) / img.width;
+          const scaleY = (canvas.height - margin * 2) / img.height;
+          state.zoom = Math.min(scaleX, scaleY);
+          state.panX = margin + (canvas.width - margin * 2 - img.width * state.zoom) / 2;
+          state.panY = margin + (canvas.height - margin * 2 - img.height * state.zoom) / 2;
+        }
+        redraw();
+      };
       img.src = url;
     }
 
@@ -1095,8 +1109,8 @@
       const { sx, sy } = getCanvasPos(e);
       const w = screenToWorld(sx, sy);
 
-      // Middle button → pan
-      if (e.button === 1) {
+      // Middle button OR Alt+Left button → pan
+      if (e.button === 1 || (e.button === 0 && e.altKey)) {
         state.isPanning = true; state.lastMouse = { x: e.clientX, y: e.clientY }; return;
       }
 
@@ -1197,7 +1211,7 @@
     });
 
     canvas.addEventListener('mouseup', e => {
-      if (e.button === 1) { state.isPanning = false; return; }
+      if (e.button === 1 || (e.button === 0 && state.isPanning)) { state.isPanning = false; return; }
       if (e.button === 2 && state.draggingNodeId) {
         // Drop node — merge if near another node
         if (state.dragSnapTarget) {
@@ -1543,7 +1557,7 @@
     document.getElementById('map-image-file').addEventListener('change', e => {
       const file = e.target.files[0]; if (!file) return;
       const reader = new FileReader();
-      reader.onload = ev => { state.mapImageUrl = ev.target.result; loadImageFromUrl(ev.target.result); save(); };
+      reader.onload = ev => { state.mapImageUrl = ev.target.result; loadImageFromUrl(ev.target.result, true); save(); };
       reader.readAsDataURL(file); e.target.value = '';
     });
 
