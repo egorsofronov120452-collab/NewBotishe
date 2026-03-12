@@ -190,7 +190,14 @@ async function sendMessage(peerId, message, params = {}, groupKey = 1) {
       ...params,
     }, groupKey);
   } catch (e) {
-    console.error('[Bot] sendMessage error:', e.message);
+    // Extra diagnostic for chat access errors so admin knows which group/chat is misconfigured
+    if (peerId > 2000000000) {
+      console.error(`[Bot] sendMessage error (chat peer=${peerId}, groupKey=${groupKey}): ${e.message}`);
+      console.error(`[Bot]   Убедитесь что бот группы ${groupKey} добавлен в беседу и имеет право писать сообщения.`);
+      console.error(`[Bot]   ID беседы (локальный): ${peerId - 2000000000}`);
+    } else {
+      console.error('[Bot] sendMessage error:', e.message);
+    }
     return null;
   }
 }
@@ -798,9 +805,16 @@ async function showBasket(peerId, uid, sess, groupKey) {
 
 // ─────────────────────────── DISPATCH: SEND ORDER TO CHAT ─────
 async function sendOrderToDispatch(order) {
-  const lines = order.basket.map(it => `${it.name}${it.temp ? ' | '+it.temp : ''} | ${it.price}р. (x${it.qty})`);
-  const total = order.total;
-  const text = `🆕 Новый заказ #${order.id.slice(-6)}\n\nНикнейм: ${order.nick}\nМесто: ${order.address}\nЗаказ:\n${lines.join('\n')}\nИтого: ${total}р.${order.promoDesc ? '\n'+order.promoDesc : ''}`;
+  let text;
+  if (order.type === 'taxi') {
+    const passText = (order.passengers || []).length ? `\nПопутчики: ${order.passengers.join(', ')}` : '';
+    const payLabel = order.payment?.type === 'cash' ? 'Наличными' : order.payment?.type === 'phone' ? 'Счёт телефона' : 'Банковский счёт';
+    text = `🚖 Новый заказ такси #${order.id.slice(-6)}\n\nНикнейм: ${order.nick}${passText}\nОткуда: ${order.from?.name || '—'}\nКуда: ${order.to?.name || '—'}\nОплата: ${payLabel}\nСтоимость: ${order.finalPrice}р.${order.promoDesc ? '\n'+order.promoDesc : ''}`;
+  } else {
+    const lines = (order.basket || []).map(it => `${it.name}${it.temp ? ' | '+it.temp : ''} | ${it.price}р. (x${it.qty})`);
+    const total = order.total;
+    text = `🆕 Новый заказ #${order.id.slice(-6)}\n\nНикнейм: ${order.nick}\nМесто: ${order.address}\nЗаказ:\n${lines.join('\n')}\nИтого: ${total}р.${order.promoDesc ? '\n'+order.promoDesc : ''}`;
+  }
 
   const keyboard = kb([[{ label: 'Принять заказ', color: 'positive', payload: { action: 'accept_order', orderId: order.id } }]]);
 
@@ -827,13 +841,17 @@ async function checkUnacceptedOrder(orderId, type) {
   if (onlineCouriers.length === 0) return;
 
   const ssChatId = type === 'taxi' ? CHATS.taxiSs : CHATS.ss;
+  // Используем токен группы, к которой принадлежит беседа СС:
+  // такси → группа 3, доставка → группа 2
+  const ssGKey   = type === 'taxi' ? 3 : 2;
   const listText = onlineCouriers.map(c => `@${c.nick} (${c.role})`).join(', ');
-  await sendMessage(ssChatId, `⚠️ Заказ #${orderId.slice(-6)} не принят за 3 минуты!\nКурьеры в сети: ${listText}\n\nПожалуйста, примите заказ.`, {}, 1);
+  await sendMessage(ssChatId, `⚠️ Заказ #${orderId.slice(-6)} не принят за 3 минуты!\nКурьеры в сети: ${listText}\n\nПожалуйста, примите заказ.`, {}, ssGKey);
 
-  // Re-notify couriers
+  // Re-notify couriers in DM (group 1 token for DMs is fine as long as user started chat;
+  // use the appropriate service group token instead so the conversation is already open)
   for (const c of onlineCouriers) {
     if (c.uid) {
-      await sendMessage(c.uid, `⚠️ Заказ #${orderId.slice(-6)} ждёт принятия уже 3 минут��!`, {}, 1);
+      await sendMessage(c.uid, `⚠️ Заказ #${orderId.slice(-6)} ждёт принятия уже 3 минут!`, {}, ssGKey);
     }
   }
 }
@@ -1155,7 +1173,7 @@ async function handleGroup1DM(event) {
     return;
   }
 
-  if (text === 'Изменить счёт') {
+  if (text === 'Изм��нить счёт') {
     sess.step = 'change_bank';
     storage.staffSessions.set(uid, sess);
     await sendMessage(peerId, 'Введите новый банковский счёт:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
@@ -2170,7 +2188,7 @@ async function handleTaxiDM(event) {
       storage.clientSessions.set('taxi_'+uid, sess);
       await sendMessage(peerId,
         'Заказ такси оформлен! Ожидайте назначения водителя.',
-        { keyboard: msgKb([[{ label: 'Статус заказа' }], [{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
+        { keyboard: msgKb([[{ label: 'Статус заказа' }], [{ label: 'Отменить заказ', color: 'negative' }]]) }, 3);
       return;
     }
     return;
@@ -2181,20 +2199,53 @@ async function handleTaxiDM(event) {
       const order = storage.activeTaxi.get(sess.data.orderId);
       if (!order) { await sendMessage(peerId, 'Заказ не найден или завершён.', {}, 3); return; }
       const statusMap = { pending: 'Ожидает водителя', accepted: 'Водитель едет к вам', delivering: 'В пути', arrived: 'Водитель ждёт', done: 'Завершён' };
-      await sendMessage(peerId, `Статус: ${statusMap[order.status] || order.status}\nВодитель: ${order.courierNick || 'не назначен'}`, {}, 3);
+      await sendMessage(peerId,
+        `Статус: ${statusMap[order.status] || order.status}\nВодитель: ${order.courierNick || 'не назначен'}`,
+        { keyboard: msgKb([[{ label: 'Статус заказа' }], [{ label: 'Отменить заказ', color: 'negative' }]]) }, 3);
       return;
     }
-    if (text === 'Главное меню') { sess.step = TAXI_STEP.MAIN; sess.data = {}; return; }
+    if (text === 'Отменить заказ') {
+      const orderId = sess.data.orderId;
+      const order   = storage.activeTaxi.get(orderId);
+      if (order && order.status === 'pending') {
+        order.status = 'cancelled';
+        storage.activeTaxi.delete(orderId);
+        // Update orders file
+        const ords = readJSON(ORDERS_FILE, { delivery: [], taxi: [] });
+        const idx  = ords.taxi.findIndex(o => o.id === orderId);
+        if (idx !== -1) { ords.taxi[idx].status = 'cancelled'; writeJSON(ORDERS_FILE, ords); }
+        // Notify dispatcher chat
+        const ids = storage.orderMsgIds.get(orderId);
+        if (ids && ids.dispatchMsgId) {
+          await editMessage(ids.chatId, ids.dispatchMsgId, `Заказ #${orderId.slice(-6)} — отменён клиентом.`, { keyboard: null }, 3);
+        }
+      }
+      sess.step = TAXI_STEP.MAIN; sess.data = {};
+      storage.clientSessions.set('taxi_'+uid, sess);
+      await sendMessage(peerId, 'Заказ отменён.', { keyboard: msgKb([
+        [{ label: 'Заказать такси', color: 'positive' }],
+        [{ label: 'Трудоустройство', color: 'secondary' }, { label: 'Частые вопросы', color: 'secondary' }],
+      ]) }, 3);
+      return;
+    }
     return;
   }
 }
 
 async function showTaxiPointCats(peerId, prompt, uid, groupKey) {
   const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
-  if (!tp.categories.length) { await sendMessage(peerId, 'Точки маршрута пока не добавлены. Обратитесь к администратору.', {}, groupKey); return; }
+  if (!tp.categories.length || !tp.points.length) {
+    // Сбрасываем шаг сессии, чтобы кнопки снова работали
+    const sess = storage.clientSessions.get('taxi_'+uid);
+    if (sess) { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_'+uid, sess); }
+    await sendMessage(peerId, 'Точки маршрута пока не добавлены. Обратитесь к администратору.',
+      { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, groupKey);
+    return false;
+  }
   const rows = tp.categories.map(c => [{ label: c.name }]);
   rows.push([{ label: 'Отмена', color: 'negative' }]);
   await sendMessage(peerId, prompt, { keyboard: msgKb(rows) }, groupKey);
+  return true;
 }
 
 async function showTaxiConfirm(peerId, uid, sess, groupKey) {
@@ -2209,19 +2260,94 @@ async function showTaxiConfirm(peerId, uid, sess, groupKey) {
       ]) }, groupKey);
 }
 
+// ─── Taxi map calibration ────────────────────────────────────
+// PIXELS_PER_KM: сколько пикселей карты соответствует 1 км реального расстояния.
+// Настройте это значение через редактор карты (метка «1 км» в taxi_points.json → calibration.pixelsPerKm).
+// По умолчанию: 160 пикселей = 1 км (для карты г. Мирный ~5000px ширина ≈ 30 км).
+const DEFAULT_PIXELS_PER_KM = 160;
+const PRICE_PER_KM = 50; // рублей за км
+
+function getPixelsPerKm() {
+  try {
+    const tp = readJSON(TAXI_POINTS_FILE, {});
+    return (tp.calibration && tp.calibration.pixelsPerKm) ? tp.calibration.pixelsPerKm : DEFAULT_PIXELS_PER_KM;
+  } catch(_) { return DEFAULT_PIXELS_PER_KM; }
+}
+
 function calculateTaxiPrice(from, to) {
-  // Use stored distance or default formula
+  // 1. Явный override: фиксированная цена между двумя точками
   if (from.priceOverrides && from.priceOverrides[to.id]) return from.priceOverrides[to.id];
-  // Simple distance-based: each point has optional coords (x,y from map)
   if (from.x !== undefined && to.x !== undefined) {
-    const dist = Math.sqrt(Math.pow(from.x - to.x, 2) + Math.pow(from.y - to.y, 2));
-    const base = Math.round(dist * 50); // 50р per unit
-    // Peak hour multiplier (18-22 MSK)
-    const hour = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' })).getHours();
-    const peak = (hour >= 18 && hour <= 22) ? 1.3 : 1.0;
+    const tp        = readJSON(TAXI_POINTS_FILE, {});
+    const pxPerKm   = getPixelsPerKm();
+    let   pixelDist;
+
+    // 2. Shortest path through road node graph (BFS/Dijkstra on edges)
+    if (tp.roadNodes && tp.roadNodes.length && tp.roadEdges && tp.roadEdges.length) {
+      pixelDist = roadGraphDistance(tp.roadNodes, tp.roadEdges, from, to);
+    }
+    // 3. Straight-line fallback
+    if (!pixelDist) {
+      pixelDist = Math.sqrt(Math.pow(from.x - to.x, 2) + Math.pow(from.y - to.y, 2));
+    }
+
+    const km    = pixelDist / pxPerKm;
+    const pPerKm = (tp.calibration && tp.calibration.pricePerKm) ? tp.calibration.pricePerKm : PRICE_PER_KM;
+    const minP   = (tp.calibration && tp.calibration.minPrice)   ? tp.calibration.minPrice   : 100;
+    const base  = Math.max(minP, Math.round(km * pPerKm));
+    // Коэффициент пиковых часов (18-22 МСК)
+    const hour  = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' })).getHours();
+    const peak  = (hour >= 18 && hour <= 22) ? 1.3 : 1.0;
     return Math.round(base * peak);
   }
+  // 4. Дефолтная цена точки
   return from.defaultPrice || 500;
+}
+
+// Dijkstra on road node graph: finds pixel distance from nearest node to {from} → nearest node to {to}
+function roadGraphDistance(nodes, edges, from, to) {
+  // Find nearest node to each point
+  const nearFrom = nodes.reduce((best, n) => {
+    const d = Math.hypot(n.x - from.x, n.y - from.y);
+    return (!best || d < best.d) ? { id: n.id, d } : best;
+  }, null);
+  const nearTo = nodes.reduce((best, n) => {
+    const d = Math.hypot(n.x - to.x, n.y - to.y);
+    return (!best || d < best.d) ? { id: n.id, d } : best;
+  }, null);
+  if (!nearFrom || !nearTo) return null;
+  if (nearFrom.id === nearTo.id) return nearFrom.d + nearTo.d;
+
+  // Build adjacency list
+  const adj = {};
+  for (const n of nodes) adj[n.id] = [];
+  for (const e of edges) {
+    const n1 = nodes.find(n => n.id === e.from);
+    const n2 = nodes.find(n => n.id === e.to);
+    if (!n1 || !n2) continue;
+    const d = Math.hypot(n1.x - n2.x, n1.y - n2.y);
+    adj[e.from].push({ id: e.to,   d });
+    adj[e.to  ].push({ id: e.from, d });
+  }
+
+  // Dijkstra
+  const dist = {}; nodes.forEach(n => { dist[n.id] = Infinity; });
+  dist[nearFrom.id] = nearFrom.d; // include approach distance
+  const visited = new Set();
+  while (true) {
+    let u = null;
+    for (const id of Object.keys(dist)) {
+      if (!visited.has(id) && (u === null || dist[id] < dist[u])) u = id;
+    }
+    if (u === null || dist[u] === Infinity) break;
+    visited.add(u);
+    for (const { id: v, d } of (adj[u] || [])) {
+      if (dist[u] + d < dist[v]) dist[v] = dist[u] + d;
+    }
+  }
+  // Add approach distance to destination node
+  const total = dist[nearTo.id];
+  return total === Infinity ? null : total + nearTo.d;
 }
 
 async function handleTaxiAdminPromos(uid, peerId, text, event) {
@@ -2898,7 +3024,7 @@ async function handleChatCommand(event, groupKey) {
     else if (parts[1]) targetId = extractUserId(parts[1]);
     if (!targetId) { await sendMessage(peerId, 'Укажите пользователя', {}, groupKey); return true; }
     const days = parseInt(parts[reply ? 1 : 2]) || 0;
-    const reason = parts.slice(reply ? 2 : 3).join(' ') || 'Нарушение правил';
+    const reason = parts.slice(reply ? 2 : 3).join(' ') || 'Нарушение ��равил';
     addToBlacklist(targetId, days, reason, uid);
     const target = await getUser(targetId, groupKey);
     await sendMessage(peerId, `${target ? createUserLink(target) : targetId} забанен на ${days || 'ПЕРМАНЕНТНО'} дней. Причина: ${reason}`, {}, groupKey);
@@ -3119,7 +3245,7 @@ async function handleCallback(event, groupKey) {
       { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) },
       order.type === 'taxi' ? 3 : 2);
 
-    await sendMessage(uid, `Заказ #${orderId.slice(-6)} завершён. Молодец!`, {}, 1);
+    await sendMessage(uid, `За��аз #${orderId.slice(-6)} завершён. Молодец!`, {}, 1);
     return;
   }
 

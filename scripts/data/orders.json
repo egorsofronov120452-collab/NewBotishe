@@ -33,6 +33,105 @@
       "promoDesc": null,
       "status": "pending",
       "createdAt": 1773313595661
+    },
+    {
+      "id": "mmnemrxyf5sv",
+      "type": "taxi",
+      "clientId": 700970214,
+      "nick": "ы",
+      "passengers": [],
+      "from": {
+        "id": "mmnd3a748ayc",
+        "name": "Речной вокзал г. Мирный",
+        "categoryId": "mmnd2bx30zjz",
+        "defaultPrice": 500,
+        "x": 1324,
+        "y": 2718
+      },
+      "to": {
+        "id": "mmnd1miuafjd",
+        "name": "Здание РЖД",
+        "categoryId": "mmnd0abluhne",
+        "defaultPrice": 500,
+        "x": 1164,
+        "y": 2166
+      },
+      "basePrice": 180,
+      "finalPrice": 180,
+      "payment": {
+        "type": "cash",
+        "commission": 0
+      },
+      "promo": null,
+      "promoDesc": null,
+      "status": "pending",
+      "createdAt": 1773316120822
+    },
+    {
+      "id": "mmnf2vou73i8",
+      "type": "taxi",
+      "clientId": 700970214,
+      "nick": "Egoriy_Bobryshev",
+      "passengers": [],
+      "from": {
+        "id": "mmnd1miuafjd",
+        "name": "Здание РЖД",
+        "categoryId": "mmnd0abluhne",
+        "defaultPrice": 500,
+        "x": 1164,
+        "y": 2166
+      },
+      "to": {
+        "id": "mmnd3a748ayc",
+        "name": "Речной вокзал г. Мирный",
+        "categoryId": "mmnd2bx30zjz",
+        "defaultPrice": 500,
+        "x": 1324,
+        "y": 2718
+      },
+      "basePrice": 180,
+      "finalPrice": 193,
+      "payment": {
+        "type": "phone",
+        "commission": 0.07
+      },
+      "promo": null,
+      "promoDesc": null,
+      "status": "pending",
+      "createdAt": 1773316872175
+    },
+    {
+      "id": "mmnf629wmhg1",
+      "type": "taxi",
+      "clientId": 700970214,
+      "nick": "ыв",
+      "passengers": [],
+      "from": {
+        "id": "mmnd1miuafjd",
+        "name": "Здание РЖД",
+        "categoryId": "mmnd0abluhne",
+        "defaultPrice": 500,
+        "x": 1164,
+        "y": 2166
+      },
+      "to": {
+        "id": "mmnd3a748ayc",
+        "name": "Речной вокзал г. Мирный",
+        "categoryId": "mmnd2bx30zjz",
+        "defaultPrice": 500,
+        "x": 1324,
+        "y": 2718
+      },
+      "basePrice": 180,
+      "finalPrice": 180,
+      "payment": {
+        "type": "cash",
+        "commission": 0
+      },
+      "promo": null,
+      "promoDesc": null,
+      "status": "pending",
+      "createdAt": 1773317020676
     }
   ]
 }
