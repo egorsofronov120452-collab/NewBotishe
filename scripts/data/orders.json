@@ -1,0 +1,38 @@
+{
+  "delivery": [],
+  "taxi": [
+    {
+      "id": "mmnd4nilptur",
+      "type": "taxi",
+      "clientId": 700970214,
+      "nick": "ы",
+      "passengers": [],
+      "from": {
+        "id": "mmnd1miuafjd",
+        "name": "Здание РЖД",
+        "categoryId": "mmnd0abluhne",
+        "defaultPrice": 500,
+        "x": 1164,
+        "y": 2166
+      },
+      "to": {
+        "id": "mmnd3a748ayc",
+        "name": "Речной вокзал г. Мирный",
+        "categoryId": "mmnd2bx30zjz",
+        "defaultPrice": 500,
+        "x": 1324,
+        "y": 2718
+      },
+      "basePrice": 28736,
+      "finalPrice": 28736,
+      "payment": {
+        "type": "cash",
+        "commission": 0
+      },
+      "promo": null,
+      "promoDesc": null,
+      "status": "pending",
+      "createdAt": 1773313595661
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "cities": [],
+  "categories": [
+    {
+      "id": "mmnd0abluhne",
+      "name": "Гос. учреждения"
+    },
+    {
+      "id": "mmnd2bx30zjz",
+      "name": "Интересные места"
+    }
+  ],
+  "points": [
+    {
+      "id": "mmnd1miuafjd",
+      "name": "Здание РЖД",
+      "categoryId": "mmnd0abluhne",
+      "defaultPrice": 500,
+      "x": 1164,
+      "y": 2166
+    },
+    {
+      "id": "mmnd3a748ayc",
+      "name": "Речной вокзал г. Мирный",
+      "categoryId": "mmnd2bx30zjz",
+      "defaultPrice": 500,
+      "x": 1324,
+      "y": 2718
+    }
+  ]
+}
