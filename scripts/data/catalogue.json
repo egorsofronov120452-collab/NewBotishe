@@ -4,8 +4,26 @@
       "id": "cat_sets",
       "name": "Сеты",
       "photo": null
+    },
+    {
+      "id": "mmniig2oe498",
+      "name": "Аптека",
+      "items": []
     }
   ],
   "products": [],
-  "sets": []
+  "sets": [],
+  "items": [
+    {
+      "id": "mmnik9fxvpfc",
+      "name": "Антибиотики | 60hp",
+      "price": 3250,
+      "cost": 2000,
+      "temp": "",
+      "categoryId": "mmniig2oe498",
+      "subItems": [],
+      "instruction": null,
+      "photoId": "photo700970214_457242322"
+    }
+  ]
 }

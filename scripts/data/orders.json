@@ -1,5 +1,32 @@
 {
-  "delivery": [],
+  "delivery": [
+    {
+      "id": "mmnilqeqaxfj",
+      "type": "delivery",
+      "clientId": 700970214,
+      "nick": "Egoriy_Bobryshev",
+      "address": "Здание РЖД",
+      "basket": [
+        {
+          "id": "mmnik9fxvpfc",
+          "name": "Антибиотики | 60hp",
+          "price": 3250,
+          "cost": 2000,
+          "temp": "",
+          "categoryId": "mmniig2oe498",
+          "subItems": [],
+          "instruction": null,
+          "photoId": "photo700970214_457242322",
+          "qty": 1
+        }
+      ],
+      "total": 3250,
+      "promo": null,
+      "promoDesc": null,
+      "status": "pending",
+      "createdAt": 1773322790642
+    }
+  ],
   "taxi": [
     {
       "id": "mmnd4nilptur",

@@ -181,6 +181,15 @@ async function callVK(method, params = {}, groupKey = 1, useUserToken = false) {
   return data.response;
 }
 
+/** Determine which group token owns a given chat peer_id */
+function chatGroupKey(chatPeerId) {
+  const delivery = [CHATS.dispetcherskaya, CHATS.ss, CHATS.fludilka, CHATS.uchebny];
+  const taxi     = [CHATS.taxiDispetcherskaya, CHATS.taxiSs, CHATS.taxiFludilka, CHATS.taxiUchebny];
+  if (delivery.includes(chatPeerId)) return 2;
+  if (taxi.includes(chatPeerId))     return 3;
+  return 1;
+}
+
 /** Send message using a specific group token */
 async function sendMessage(peerId, message, params = {}, groupKey = 1) {
   try {
@@ -331,7 +340,7 @@ function isAdmin(uid, peerId) { return hasPermission(uid, peerId, ['rs']); }
 // ─────────────────────────── CATALOGUE HELPERS ────────────────
 function loadCatalogue() {
   const cat = readJSON(CATALOGUE_FILE, { categories: [], items: [], sets: [] });
-  // Гарантируем что все поля существуют (защита от повреждённого файла)
+  // Г��рантируем что все поля существуют (защита от повреждённого файла)
   if (!Array.isArray(cat.categories)) cat.categories = [];
   if (!Array.isArray(cat.items))      cat.items = [];
   if (!Array.isArray(cat.sets))       cat.sets = [];
@@ -676,7 +685,7 @@ async function handleDeliveryDM(event) {
   }
 
   if (sess.step === DEL_STEP.CHECKOUT_CONF) {
-    if (text === 'Изменить') { sess.step = DEL_STEP.CHECKOUT_NICK; await sendMessage(peerId, 'Введите никнейм:', {}, 2); return; }
+    if (text === 'Изменить') { sess.step = DEL_STEP.CHECKOUT_NICK; await sendMessage(peerId, 'Введите ник��ейм:', {}, 2); return; }
     if (text === 'Верно') {
       sess.step = DEL_STEP.PROMO;
       await sendMessage(peerId, 'Есть промокод? Введите его или нажмите «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить', color: 'secondary' }]]) }, 2);
@@ -975,7 +984,7 @@ async function buildTaxiDriverScreen(uid, order) {
     [{ label: 'Прибыл к клиенту', color: 'positive', payload: { action: 'courier_arrived', orderId: order.id } }],
     [{ label: 'Платное ожидание', color: 'secondary', payload: { action: 'taxi_paid_waiting', orderId: order.id } }],
     [{ label: 'Завершить поездку', color: 'positive', payload: { action: 'finish_order', orderId: order.id } }],
-    [{ label: `Связь с клиентом: vk.me/id${order.clientId}`, color: 'secondary', payload: { action: 'noop' } }],
+    [{ label: `Связь с клиенто��: vk.me/id${order.clientId}`, color: 'secondary', payload: { action: 'noop' } }],
   ];
   const msgId = await sendMessage(uid, text, { keyboard: kb(buttons) }, 1);
   order.driverMsgId = msgId;
@@ -1144,7 +1153,7 @@ async function handleGroup1DM(event) {
   if (text === 'Мой профиль' || text === 'профиль') {
     const cars    = (profile.vehicles || []).map(v => `  • ${v.name}${v.isOrg ? ' [орг]' : ''}${v.brandColor ? ' [фирм.]' : ''}`).join('\n');
     const orgCars = (profile.orgVehicles || []).map(v => `  • ${v.name}`).join('\n');
-    const text2   = `Профиль сотрудника:\n\nНик: ${profile.nick}\nБанк. счёт: ${profile.bank}\nРоль: ${profile.role}\n\nЛичный автопарк:\n${cars || '  (нет)'}\n��вто организации:\n${orgCars || '  (нет)'}\n\nСтатистика:\n  Заказы доставки: ${profile.stats?.deliveryOrders || 0}\n  Заказы такси: ${profile.stats?.taxiOrders || 0}`;
+    const text2   = `Профиль сотру��ника:\n\nНик: ${profile.nick}\nБанк. счёт: ${profile.bank}\nРоль: ${profile.role}\n\nЛичный автопарк:\n${cars || '  (нет)'}\n��вто организации:\n${orgCars || '  (нет)'}\n\nСтатистика:\n  Заказы доставки: ${profile.stats?.deliveryOrders || 0}\n  Заказы такси: ${profile.stats?.taxiOrders || 0}`;
     await sendMessage(peerId, text2, { keyboard: msgKb([
       [{ label: 'Автопарк', color: 'secondary' }, { label: 'Изменить ник', color: 'secondary' }, { label: 'Изменить счёт', color: 'secondary' }],
       [{ label: 'Главное меню', color: 'secondary' }],
@@ -1373,7 +1382,7 @@ async function handleStaffVehicleAdd(uid, peerId, text, event) {
   const sess = storage.staffSessions.get(uid) || { step: null, data: {} };
   const step = sess.step;
   const staff = readJSON(STAFF_FILE, {});
-  const profile = staff[uid];
+  const profile = staff[String(uid)];
 
   if (text === 'Добавить личное авто') {
     const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
@@ -1461,6 +1470,48 @@ async function handleStaffVehicleAdd(uid, peerId, text, event) {
   return false;
 }
 
+// ─────────────────────────── CATALOGUE ITEM PICKERS ──────────
+/** Show keyboard of existing catalogue items for sub-item picking */
+async function showSubItemPicker(peerId, uid, sess, groupKey) {
+  const cat = loadCatalogue();
+  const picked = (sess.data.subItemsPicked || []).map(s => `${s.name} x${s.qty}`).join(', ') || '(пусто)';
+  // Show items as rows (max 10 per page)
+  const items = cat.items.filter(it => it.categoryId !== 'sets');
+  const PAGE = 8;
+  const page = sess.data.subPickPage || 0;
+  const slice = items.slice(page * PAGE, (page + 1) * PAGE);
+  const rows = slice.map(it => [{ label: it.name }]);
+  const nav = [];
+  if (page > 0) nav.push({ label: '← Пред.', color: 'secondary' });
+  if ((page + 1) * PAGE < items.length) nav.push({ label: '→ Далее', color: 'secondary' });
+  if (nav.length) rows.push(nav);
+  rows.push([{ label: 'Пропустить / Готово', color: 'positive' }]);
+  rows.push([{ label: 'Отмена', color: 'negative' }]);
+  await sendMessage(peerId,
+    `Выберите простые товары из состава (кликните для добавления, введите «Имя x2» для кол-ва):\n\nСейчас: ${picked}`,
+    { keyboard: msgKb(rows) }, groupKey);
+}
+
+/** Show keyboard of existing catalogue items for set composition picking */
+async function showSetItemPicker(peerId, uid, sess, groupKey) {
+  const cat = loadCatalogue();
+  const picked = (sess.data.setItemsPicked || []).map(s => `${s.name} x${s.qty}`).join(', ') || '(пусто)';
+  const items = cat.items;
+  const PAGE = 8;
+  const page = sess.data.setPickPage || 0;
+  const slice = items.slice(page * PAGE, (page + 1) * PAGE);
+  const rows = slice.map(it => [{ label: it.name }]);
+  const nav = [];
+  if (page > 0) nav.push({ label: '← Пред.', color: 'secondary' });
+  if ((page + 1) * PAGE < items.length) nav.push({ label: '→ Далее', color: 'secondary' });
+  if (nav.length) rows.push(nav);
+  rows.push([{ label: 'Готово', color: 'positive' }]);
+  rows.push([{ label: 'Отмена', color: 'negative' }]);
+  await sendMessage(peerId,
+    `Добавьте товары в сет (кликните для добавления x1, или введите «Имя x2»):\n\nСостав: ${picked}`,
+    { keyboard: msgKb(rows) }, groupKey);
+}
+
 // ─────────────────────────── CATALOGUE ADMIN ──────────────────
 async function handleAdminCommand(uid, peerId, text, role) {
   const asSess = storage.adminSessions.get(uid) || { step: null, data: {} };
@@ -1476,6 +1527,7 @@ async function handleAdminCommand(uid, peerId, text, role) {
           [{ label: 'Добавить категорию' }, { label: 'Добавить товар' }],
           [{ label: 'Добавить сет' }, { label: 'Удалить категорию' }],
           [{ label: 'Удалить товар' }, { label: 'Удалить сет' }],
+          [{ label: 'Главное меню', color: 'secondary' }],
         ]) }, 1);
     return;
   }
@@ -1491,15 +1543,16 @@ async function handleAdminCatalogueSession(uid, peerId, text, event) {
   // ─ Add Category ─────────────────────────────────────────
   if (text === 'Добавить категорию') {
     sess.step = 'admin_cat_name'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите название новой категории:', {}, 1);
+    await sendMessage(peerId, 'Введите название новой категории:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
     return true;
   }
   if (step === 'admin_cat_name') {
+    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }]]) }, 1); return true; }
     const cat = loadCatalogue();
     cat.categories.push({ id: genId(), name: text, items: [] });
     saveCatalogue(cat);
     sess.step = null; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, `Категория «${text}» добавлена.`, {}, 1);
+    await sendMessage(peerId, `Категория «${text}» добавлена.`, { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }, { label: 'Главное меню', color: 'secondary' }]]) }, 1);
     return true;
   }
 
@@ -1514,33 +1567,72 @@ async function handleAdminCatalogueSession(uid, peerId, text, event) {
     return true;
   }
   if (step === 'admin_item_cat') {
-    if (text === 'Отмена') { sess.step = null; return true; }
+    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }]]) }, 1); return true; }
     const cat = loadCatalogue();
     const category = cat.categories.find(c => c.name === text);
     if (!category) return true;
     sess.data.itemCatId = category.id; sess.step = 'admin_item_name'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите название товара:', {}, 1);
+    await sendMessage(peerId, 'Введите название товара:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
     return true;
   }
   if (step === 'admin_item_name') {
+    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }]]) }, 1); return true; }
     sess.data.itemName = text; sess.step = 'admin_item_price'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите стоимость товара (для клиентов, в рублях):', {}, 1);
+    await sendMessage(peerId, 'Введите стоимость товара (для клиентов, в рублях):', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
     return true;
   }
   if (step === 'admin_item_price') {
+    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }]]) }, 1); return true; }
     sess.data.itemPrice = parseInt(text) || 0; sess.step = 'admin_item_cost'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите себестоимость товара (для расчётов, в рублях):', {}, 1);
+    await sendMessage(peerId, 'Введите себестоимость товара (для расчётов, в рублях):', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
     return true;
   }
   if (step === 'admin_item_cost') {
+    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }]]) }, 1); return true; }
     sess.data.itemCost = parseInt(text) || 0; sess.step = 'admin_item_temp'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Температура / тип (например «80°с») или «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить' }]]) }, 1);
+    await sendMessage(peerId, 'Температура / тип (например «80°с») или «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить' }, { label: 'Отмена', color: 'negative' }]]) }, 1);
     return true;
   }
   if (step === 'admin_item_temp') {
+    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }]]) }, 1); return true; }
     sess.data.itemTemp = text === 'Пропустить' ? '' : text;
-    sess.step = 'admin_item_subitems'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите простые товары из которых состоит (формат: «Яйцо x2, Молоко x1») или «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить' }]]) }, 1);
+    sess.step = 'admin_item_subitems_pick'; sess.data.subItemsPicked = [];
+    storage.adminSessions.set(uid, sess);
+    await showSubItemPicker(peerId, uid, sess, 1);
+    return true;
+  }
+  if (step === 'admin_item_subitems_pick') {
+    if (text === 'Готово' || text === 'Пропустить / Готово') {
+      sess.data.subItems = sess.data.subItemsPicked || [];
+      sess.step = 'admin_item_instruction'; storage.adminSessions.set(uid, sess);
+      await sendMessage(peerId, 'Пришлите фото-инструкцию для курьера (или «Пропустить»):', { keyboard: msgKb([[{ label: 'Пропустить' }]]) }, 1);
+      return true;
+    }
+    if (text === 'Назад' || text === 'Отмена') {
+      sess.step = null; storage.adminSessions.set(uid, sess);
+      await sendMessage(peerId, 'Отменено. Вернитесь в «Управление каталогом».', { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }]]) }, 1);
+      return true;
+    }
+    if (text === '→ Далее') { sess.data.subPickPage = (sess.data.subPickPage || 0) + 1; storage.adminSessions.set(uid, sess); await showSubItemPicker(peerId, uid, sess, 1); return true; }
+    if (text === '← Пред.') { sess.data.subPickPage = Math.max(0, (sess.data.subPickPage || 0) - 1); storage.adminSessions.set(uid, sess); await showSubItemPicker(peerId, uid, sess, 1); return true; }
+    // Parse pick: "ItemName x2" or plain name
+    const m = text.match(/^(.+)\s+x(\d+)$/i);
+    const itemName = m ? m[1].trim() : text.trim();
+    const qty = m ? parseInt(m[2]) : 1;
+    const cat = loadCatalogue();
+    const found = cat.items.find(it => it.name === itemName);
+    if (!found) {
+      await sendMessage(peerId, `Товар «${itemName}» не найден в каталоге. Выберите из списка или введите «Название x кол-во»:`, {}, 1);
+      return true;
+    }
+    sess.data.subItemsPicked = sess.data.subItemsPicked || [];
+    const existing = sess.data.subItemsPicked.find(s => s.name === found.name);
+    if (existing) existing.qty += qty;
+    else sess.data.subItemsPicked.push({ name: found.name, qty });
+    storage.adminSessions.set(uid, sess);
+    const picked = sess.data.subItemsPicked.map(s => `${s.name} x${s.qty}`).join(', ');
+    await sendMessage(peerId, `Добавлено: ${found.name} x${qty}\nСейчас в составе: ${picked}`, {}, 1);
+    await showSubItemPicker(peerId, uid, sess, 1);
     return true;
   }
   if (step === 'admin_item_subitems') {
@@ -1586,38 +1678,73 @@ async function handleAdminCatalogueSession(uid, peerId, text, event) {
     cat.items.push(newItem);
     saveCatalogue(cat);
     sess.step = null; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, `Товар «${newItem.name}» добавлен (${newItem.price}р. / себест. ${newItem.cost}р.).`, {}, 1);
+    await sendMessage(peerId, `Товар «${newItem.name}» добавлен (${newItem.price}р. / себест. ${newItem.cost}р.).`, { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }, { label: 'Главное меню', color: 'secondary' }]]) }, 1);
     return true;
   }
 
   // ─ Add Set ──────────────────────────────────────────────
   if (text === 'Добавить сет') {
     sess.step = 'admin_set_name'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите название сета:', {}, 1);
+    await sendMessage(peerId, 'Введите название сета:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
     return true;
   }
   if (step === 'admin_set_name') {
+    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }]]) }, 1); return true; }
     sess.data.setName = text; sess.step = 'admin_set_price'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите стоимость сета (для клиентов):', {}, 1);
+    await sendMessage(peerId, 'Введите стоимость сета (для клиентов):', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
     return true;
   }
   if (step === 'admin_set_price') {
+    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }]]) }, 1); return true; }
     sess.data.setPrice = parseInt(text) || 0; sess.step = 'admin_set_cost'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите себестоимость сета:', {}, 1);
+    await sendMessage(peerId, 'Введите себестоимость сета:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
     return true;
   }
   if (step === 'admin_set_cost') {
-    sess.data.setCost = parseInt(text) || 0; sess.step = 'admin_set_items'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите товары сета (формат: «Бургер x1, Вода x1»):', {}, 1);
+    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }]]) }, 1); return true; }
+    sess.data.setCost = parseInt(text) || 0; sess.step = 'admin_set_items_pick'; sess.data.setItemsPicked = [];
+    storage.adminSessions.set(uid, sess);
+    await showSetItemPicker(peerId, uid, sess, 1);
     return true;
   }
-  if (step === 'admin_set_items') {
-    const subItems = text.split(',').map(s => {
-      const m = s.trim().match(/^(.+)\s+x(\d+)$/i);
-      return m ? { name: m[1].trim(), qty: parseInt(m[2]) } : null;
-    }).filter(Boolean);
-    sess.data.setItems = subItems; sess.step = 'admin_set_photo'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Пришлите фото сета или «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить' }]]) }, 1);
+  if (step === 'admin_set_items_pick') {
+    if (text === 'Готово') {
+      if (!sess.data.setItemsPicked || sess.data.setItemsPicked.length === 0) {
+        await sendMessage(peerId, 'Добавьте хотя бы один товар в сет.', {}, 1);
+        await showSetItemPicker(peerId, uid, sess, 1);
+        return true;
+      }
+      sess.data.setItems = sess.data.setItemsPicked;
+      sess.step = 'admin_set_photo'; storage.adminSessions.set(uid, sess);
+      await sendMessage(peerId, 'Пришлите фото сета или «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить' }]]) }, 1);
+      return true;
+    }
+    if (text === 'Отмена') {
+      sess.step = null; storage.adminSessions.set(uid, sess);
+      await sendMessage(peerId, 'Отменено.', { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }]]) }, 1);
+      return true;
+    }
+    if (text === '→ Далее') { sess.data.setPickPage = (sess.data.setPickPage || 0) + 1; storage.adminSessions.set(uid, sess); await showSetItemPicker(peerId, uid, sess, 1); return true; }
+    if (text === '← Пред.') { sess.data.setPickPage = Math.max(0, (sess.data.setPickPage || 0) - 1); storage.adminSessions.set(uid, sess); await showSetItemPicker(peerId, uid, sess, 1); return true; }
+    // Parse pick: "ItemName x2" or plain name
+    const mS = text.match(/^(.+)\s+x(\d+)$/i);
+    const itemNameS = mS ? mS[1].trim() : text.trim();
+    const qtyS = mS ? parseInt(mS[2]) : 1;
+    const catS = loadCatalogue();
+    const foundS = catS.items.find(it => it.name === itemNameS);
+    if (!foundS) {
+      await sendMessage(peerId, `Товар «${itemNameS}» не найден. Выберите из списка:`, {}, 1);
+      await showSetItemPicker(peerId, uid, sess, 1);
+      return true;
+    }
+    sess.data.setItemsPicked = sess.data.setItemsPicked || [];
+    const existingS = sess.data.setItemsPicked.find(s => s.name === foundS.name);
+    if (existingS) existingS.qty += qtyS;
+    else sess.data.setItemsPicked.push({ name: foundS.name, qty: qtyS, id: foundS.id });
+    storage.adminSessions.set(uid, sess);
+    const pickedS = sess.data.setItemsPicked.map(s => `${s.name} x${s.qty}`).join(', ');
+    await sendMessage(peerId, `Добавлено: ${foundS.name} x${qtyS}\nСостав сета: ${pickedS}`, {}, 1);
+    await showSetItemPicker(peerId, uid, sess, 1);
     return true;
   }
   if (step === 'admin_set_photo') {
@@ -1634,7 +1761,7 @@ async function handleAdminCatalogueSession(uid, peerId, text, event) {
     });
     saveCatalogue(cat);
     sess.step = null; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, `Сет «${sess.data.setName}» добавлен.`, {}, 1);
+    await sendMessage(peerId, `Сет «${sess.data.setName}» добавлен.`, { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }, { label: 'Главное меню', color: 'secondary' }]]) }, 1);
     return true;
   }
 
@@ -1648,7 +1775,7 @@ async function handleAdminCatalogueSession(uid, peerId, text, event) {
     return true;
   }
   if (step === 'admin_del_cat') {
-    if (text === 'Отмена') { sess.step = null; return true; }
+    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }]]) }, 1); return true; }
     const cat = loadCatalogue();
     const idx = cat.categories.findIndex(c => c.name === text);
     if (idx !== -1) {
@@ -1656,40 +1783,50 @@ async function handleAdminCatalogueSession(uid, peerId, text, event) {
       cat.categories.splice(idx, 1);
       saveCatalogue(cat);
     }
-    sess.step = null;
-    await sendMessage(peerId, `Категория «${text}» и все её товары удалены.`, {}, 1);
+    sess.step = null; storage.adminSessions.set(uid, sess);
+    await sendMessage(peerId, `Категория «${text}» и все её товары удалены.`, { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }, { label: 'Главное меню', color: 'secondary' }]]) }, 1);
     return true;
   }
 
-  // ─ Delete Item ─────────────────────────────────────────���
+  // ─ Delete Item ──────────────────────────────────────────
   if (text === 'Удалить товар') {
+    const cat = loadCatalogue();
+    if (!cat.items.length) { await sendMessage(peerId, 'Нет товаров для удаления.', { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }]]) }, 1); return true; }
     sess.step = 'admin_del_item_name'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите название товара для удаления:', {}, 1);
+    const rows = cat.items.map(it => [{ label: it.name }]);
+    rows.push([{ label: 'Отмена', color: 'negative' }]);
+    await sendMessage(peerId, 'Выберите товар для удаления:', { keyboard: msgKb(rows) }, 1);
     return true;
   }
   if (step === 'admin_del_item_name') {
+    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }]]) }, 1); return true; }
     const cat = loadCatalogue();
     const before = cat.items.length;
     cat.items = cat.items.filter(it => it.name !== text);
     saveCatalogue(cat);
-    sess.step = null;
-    await sendMessage(peerId, before !== cat.items.length ? `Товар «${text}» удалён.` : `Товар «${text}» не найден.`, {}, 1);
+    sess.step = null; storage.adminSessions.set(uid, sess);
+    await sendMessage(peerId, before !== cat.items.length ? `Товар «${text}» удалён.` : `Товар «${text}» не найден.`, { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }, { label: 'Главное меню', color: 'secondary' }]]) }, 1);
     return true;
   }
 
   // ─ Delete Set ───────────────────────────────────────────
   if (text === 'Удалить сет') {
+    const cat = loadCatalogue();
+    if (!cat.sets.length) { await sendMessage(peerId, 'Нет сетов для удаления.', { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }]]) }, 1); return true; }
     sess.step = 'admin_del_set_name'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите название сета для удаления:', {}, 1);
+    const rows = cat.sets.map(s => [{ label: s.name }]);
+    rows.push([{ label: 'Отмена', color: 'negative' }]);
+    await sendMessage(peerId, 'Выберите сет для удаления:', { keyboard: msgKb(rows) }, 1);
     return true;
   }
   if (step === 'admin_del_set_name') {
+    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }]]) }, 1); return true; }
     const cat = loadCatalogue();
     const before = cat.sets.length;
     cat.sets = cat.sets.filter(s => s.name !== text);
     saveCatalogue(cat);
-    sess.step = null;
-    await sendMessage(peerId, before !== cat.sets.length ? `Сет «${text}» удалён.` : `Сет «${text}» не найден.`, {}, 1);
+    sess.step = null; storage.adminSessions.set(uid, sess);
+    await sendMessage(peerId, before !== cat.sets.length ? `Сет «${text}» удалён.` : `Сет «${text}» не найден.`, { keyboard: msgKb([[{ label: 'Управление каталогом', color: 'secondary' }, { label: 'Главное меню', color: 'secondary' }]]) }, 1);
     return true;
   }
 
@@ -1722,7 +1859,7 @@ async function handleAdminPromosSession(uid, peerId, text, event, role) {
     await sendMessage(peerId, 'Выберите тип промокода:', { keyboard: msgKb([
       [{ label: 'Скидка %' }, { label: 'Скидка фикс.' }],
       [{ label: 'Бесплатный товар' }, { label: 'Бесплатная доставка' }],
-      [{ label: 'Скидка на категорию' }],
+      [{ label: 'Скидка н�� категорию' }],
     ]) }, 1);
     return true;
   }
@@ -1807,7 +1944,7 @@ async function saveNewPromo(uid, peerId, sess, extra) {
 }
 
 // ─────────────────────────── TAXI POINTS ADMIN ────────────────
-// Управление точками маршрута через ЛС группы 1 (РС)
+// Управление точками маршрута ��ерез ЛС группы 1 (РС)
 async function handleAdminTaxiPoints(uid, peerId, text, event) {
   const sess = storage.adminSessions.get(uid) || { step: null, data: {} };
   const step = sess.step;
@@ -1868,13 +2005,13 @@ async function handleAdminTaxiPoints(uid, peerId, text, event) {
     const cat = tp.categories.find(c => c.name === text);
     if (!cat) return false;
     sess.data.tpCatId = cat.id; sess.step = 'tp_add_point_name'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, `Категория: ${text}\nВведите название точки (адрес/место):`, { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
+    await sendMessage(peerId, `Категория: ${text}\nВведите название точки (адрес/место):`, { keyboard: msgKb([[{ label: 'Отме��а', color: 'negative' }]]) }, 1);
     return true;
   }
   if (step === 'tp_add_point_name') {
     if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', {}, 1); return true; }
     sess.data.tpPointName = text; sess.step = 'tp_add_point_price'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, `Точка: «${text}»\nВведите базовую стоимость из этой точки (число, например 150):`, { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
+    await sendMessage(peerId, `Точка: «${text}»\nВведи��е базовую стоимость из этой точки (число, например 150):`, { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
     return true;
   }
   if (step === 'tp_add_point_price') {
@@ -2989,7 +3126,7 @@ async function handleChatCommand(event, groupKey) {
         await callVK('messages.removeChatUser', { chat_id: chatPeer - 2000000000, member_id: targetId }, gk);
         kickedFrom.push(chatPeer);
       } catch (e) {
-        // Не участник чата или нет прав — пропускаем тихо, фиксируем только реальные ошибки
+        // Не участник чата или нет прав — пропускаем тихо, фиксируем то��ько реальные ошибки
         if (!e.message.includes('not a chat member') && !e.message.includes('User not found')) {
           errors.push(`${chatPeer}: ${e.message}`);
         }
@@ -3075,7 +3212,8 @@ async function handleChatCommand(event, groupKey) {
     const chats = Object.values(CHATS).filter(v => v > 0);
     let sent = 0;
     for (const chatPeer of chats) {
-      try { await sendMessage(chatPeer, `📢 Объявление:\n${msg}`, {}, groupKey); sent++; } catch(_) {}
+      const gk = chatGroupKey(chatPeer);
+      try { await sendMessage(chatPeer, `Объявление:\n${msg}`, {}, gk); sent++; } catch(_) {}
     }
     await sendMessage(peerId, `Уведомление отправлено в ${sent} чатов`, {}, groupKey);
     return true;
