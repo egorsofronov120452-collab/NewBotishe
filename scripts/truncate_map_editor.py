@@ -1,8 +1,7 @@
 """Truncate map-editor.html to keep only first 1209 lines (the valid HTML)."""
 import os
 
-src = os.path.join(os.path.dirname(__file__), '..', 'tools', 'map-editor.html')
-src = os.path.abspath(src)
+src = os.path.abspath(os.path.join('/vercel/share/v0-project', 'tools', 'map-editor.html'))
 
 with open(src, 'r', encoding='utf-8') as f:
     lines = f.readlines()
