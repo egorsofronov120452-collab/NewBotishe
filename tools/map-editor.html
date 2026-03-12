@@ -582,7 +582,7 @@
       <div class="tab-panel" id="tab-calib">
         <div class="section-title">Калибровка масштаба</div>
         <p style="font-size:11px;color:#94a3b8;margin-bottom:8px;">
-          Разместите две метки на карте на известном расстоянии (например, 1 км).
+          Размести��е две метки на карте на известном расстоянии (например, 1 км).
           Бот будет использовать это для расчёта цены поездки.
         </p>
         <button class="btn btn-warning" id="calib-start-btn">Поставить точку A</button>
@@ -1112,11 +1112,11 @@
         placeRoadNode(w.x, w.y); return;
       }
 
-      // Left click — set/clear marker on node when a marker mode is selected
-      if (state.markerMode !== undefined) {
+      // Left click — set/clear marker on node when a marker mode is selected (only when not road-drawing)
+      if (!state.roadDrawing && state.markerMode !== '') {
         const hitN = hitTestNode(sx, sy);
         if (hitN) {
-          hitN.marker = (hitN.marker === state.markerMode && state.markerMode !== '') ? '' : state.markerMode;
+          hitN.marker = hitN.marker === state.markerMode ? '' : state.markerMode;
           save(); redraw(); renderRoadGraph(); return;
         }
       }
@@ -1250,7 +1250,7 @@
         state.markerMode = btn.dataset.marker;
         const label = state.markerMode === 'radar' ? 'Кликайте по узлу для установки/снятия РАДАРА'
           : state.markerMode === 'light' ? 'Кликайте по узлу для установки/снятия СВЕТОФОРА'
-            : 'Кликайте по узлу для снятия маркера';
+            : '��ликайте по узлу для снятия маркера';
         document.getElementById('map-hint').textContent = label;
       });
     });
