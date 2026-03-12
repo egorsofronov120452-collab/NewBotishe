@@ -1207,26 +1207,6 @@ load(); loadCalibUI(); renderAll(); renderRoadGraph();
 </script>
 </body>
 </html>
-
-// ─────────────────────── PERSISTENCE ──────────────────────────
-function save() {
-  const data = {
-    categories: state.categories, points: state.points,
-    roadNodes: state.roadNodes, roadEdges: state.roadEdges,
-    water: state.water, nopickup: state.nopickup, zones: state.zones,
-    calibration: state.calibration, calibPoints: state.calibPoints,
-    mapImageUrl: state.mapImageUrl,
-  };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-}
-
-function load() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const data = JSON.parse(raw);
-    state.categories  = data.categories  || [];
-    state.points      = data.points      || [];
     // Support old format (roads as polylines) — migrate to node graph
     if (data.roadNodes) {
       state.roadNodes = data.roadNodes || [];
