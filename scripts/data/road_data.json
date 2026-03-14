@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "roadMask": "",
+  "width": 0,
+  "height": 0,
+  "objects": [],
+  "calibration": {
+    "pixelsPerMeter": 10,
+    "pricePerKm": 15,
+    "minPrice": 100,
+    "boardingPrice": 50
+  },
+  "jsonbin": {
+    "id": "",
+    "key": ""
+  },
+  "_comment": "Этот файл генерируется автоматически из map-editor.html. Используйте кнопку 'Экспорт данных дороги' в редакторе для создания актуальных данных."
+}

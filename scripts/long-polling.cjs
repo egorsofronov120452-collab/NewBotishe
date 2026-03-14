@@ -83,7 +83,14 @@ const STAFF_FILE       = path.join(DATA_DIR, 'staff.json');
 const VEHICLES_FILE    = path.join(DATA_DIR, 'vehicles.json');
 const PROMOS_FILE      = path.join(DATA_DIR, 'promos.json');
 const TAXI_POINTS_FILE = path.join(DATA_DIR, 'taxi_points.json');
+const ROAD_DATA_FILE   = path.join(DATA_DIR, 'road_data.json');
 const ONLINE_FILE      = path.join(DATA_DIR, 'online_journal.json');
+
+// Taxi client map URL (GitHub Pages or other hosting)
+const TAXI_CLIENT_MAP_URL = process.env.TAXI_CLIENT_MAP_URL || 'https://YOUR_USERNAME.github.io/taxi-map/taxi-client-map.html';
+// JSONBin.io credentials for taxi orders
+const JSONBIN_ID  = process.env.JSONBIN_TAXI_ID  || '';
+const JSONBIN_KEY = process.env.JSONBIN_TAXI_KEY || '';
 const REPORTS_FILE     = path.join(DATA_DIR, 'reports.json');
 const BLACKLIST_FILE   = path.join(__dirname, 'blacklist.json');
 const MUTES_FILE       = path.join(__dirname, 'mutes.json');
@@ -112,6 +119,7 @@ initJSONFile(STAFF_FILE,       {});
 initJSONFile(VEHICLES_FILE,    { org_vehicles: [], catalog: [] });
 initJSONFile(PROMOS_FILE,      { delivery: [], taxi: [] });
 initJSONFile(TAXI_POINTS_FILE, { categories: [], points: [] });
+  initJSONFile(ROAD_DATA_FILE,   { version: 2, roadMask: '', width: 0, height: 0, objects: [], calibration: { pixelsPerMeter: 10, pricePerKm: 15, minPrice: 100, boardingPrice: 50 } });
 initJSONFile(ONLINE_FILE,      { sessions: {}, stats: {} });
 initJSONFile(REPORTS_FILE,     { delivery: [], taxi: [] });
 initJSONFile(BLACKLIST_FILE,   {});
@@ -731,7 +739,7 @@ async function handleDeliveryDM(event) {
       await sendMessage(peerId, `Статус заказа: ${statusMap[order.status] || order.status}\nКурьер: ${order.courierNick || 'не назначен'}`, {}, 2);
       return;
     }
-    if (text === 'Ссы����ка на курьера') {
+    if (text === '��сы����ка на курьера') {
       const order = storage.activeOrders.get(sess.data.orderId);
       if (!order || !order.courierId) { await sendMessage(peerId, 'Курьер ещё не назначен.', {}, 2); return; }
       sess.data.awaitingCourierLinkConfirm = true;
@@ -1155,7 +1163,7 @@ async function handleGroup1DM(event) {
     return;
   }
 
-  if (text === 'Изменить счёт') {
+  if (text === 'Изменит�� счёт') {
     sess.step = 'change_bank';
     storage.staffSessions.set(uid, sess);
     await sendMessage(peerId, 'Введите новый банковский счёт:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
@@ -1923,15 +1931,12 @@ async function handleAdminTaxiPoints(uid, peerId, text, event) {
   return false;
 }
 
-// ─────────────────────────── TAXI: GROUP 3 DMs ────────────────
+// ─────────────────────────── TAXI: GROUP 3 DMs (NEW MAP-BASED SYSTEM) ────────────────
 const TAXI_STEP = {
   MAIN:           'taxi_main',
   ORDER_NICK:     'taxi_nick',
   ORDER_PASSENGERS: 'taxi_passengers',
-  ORDER_FROM_CAT: 'taxi_from_cat',
-  ORDER_FROM:     'taxi_from',
-  ORDER_TO_CAT:   'taxi_to_cat',
-  ORDER_TO:       'taxi_to',
+  WAITING_MAP:    'taxi_waiting_map',    // Waiting for user to select route on map
   ORDER_PROMO:    'taxi_promo',
   ORDER_PAYMENT:  'taxi_payment',
   ORDER_PAYMENT_SCREEN: 'taxi_payment_screen',
@@ -1946,6 +1951,79 @@ function taxiSession(uid) {
   }
   return storage.clientSessions.get('taxi_'+uid);
 }
+
+// JSONBin polling for taxi map orders
+let lastCheckedOrderTimestamp = Date.now();
+
+async function checkJsonBinOrders() {
+  if (!JSONBIN_ID || !JSONBIN_KEY) return;
+  
+  try {
+    const response = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_ID}/latest`, {
+      headers: { 'X-Master-Key': JSONBIN_KEY },
+    });
+    
+    if (!response.ok) return;
+    
+    const data = await response.json();
+    const orders = data.record?.orders || [];
+    
+    // Process new orders
+    for (const order of orders) {
+      if (order.status === 'pending' && order.timestamp > lastCheckedOrderTimestamp) {
+        await processMapTaxiOrder(order);
+      }
+    }
+    
+    // Update last checked timestamp
+    if (orders.length > 0) {
+      lastCheckedOrderTimestamp = Math.max(...orders.map(o => o.timestamp));
+    }
+    
+    // Clear processed orders from JSONBin
+    const pendingOrders = orders.filter(o => o.status === 'pending' && o.timestamp > lastCheckedOrderTimestamp - 60000);
+    if (pendingOrders.length !== orders.length) {
+      await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_ID}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Master-Key': JSONBIN_KEY,
+        },
+        body: JSON.stringify({ orders: pendingOrders }),
+      });
+    }
+  } catch (err) {
+    console.error('[Taxi] JSONBin polling error:', err.message);
+  }
+}
+
+async function processMapTaxiOrder(mapOrder) {
+  const uid = mapOrder.userId;
+  if (!uid) return;
+  
+  const sess = taxiSession(uid);
+  if (sess.step !== TAXI_STEP.WAITING_MAP) return;
+  
+  // Store route data
+  sess.data.from = { x: mapOrder.from.x, y: mapOrder.from.y, name: `X:${mapOrder.from.x}, Y:${mapOrder.from.y}` };
+  sess.data.to = { x: mapOrder.to.x, y: mapOrder.to.y, name: `X:${mapOrder.to.x}, Y:${mapOrder.to.y}` };
+  sess.data.distance = mapOrder.distance;
+  sess.data.basePrice = mapOrder.cost;
+  sess.step = TAXI_STEP.ORDER_PROMO;
+  storage.clientSessions.set('taxi_'+uid, sess);
+  
+  const peerId = uid; // DM peer_id equals user_id
+  const distText = mapOrder.distance >= 1000 
+    ? `${(mapOrder.distance / 1000).toFixed(2)} км` 
+    : `${Math.round(mapOrder.distance)} м`;
+  
+  await sendMessage(peerId,
+    `Маршрут получен!\n\nОткуда: ${sess.data.from.name}\nКуда: ${sess.data.to.name}\nРасстояние: ${distText}\nСтоимость: ${mapOrder.cost}р.\n\nЕсть промокод? Введите или «Пропустить»:`,
+    { keyboard: msgKb([[{ label: 'Пропустить', color: 'secondary' }], [{ label: 'Отмена', color: 'negative' }]]) }, 3);
+}
+
+// Start JSONBin polling every 5 seconds
+setInterval(checkJsonBinOrders, 5000);
 
 async function handleTaxiDM(event) {
   const uid    = event.from_id;
@@ -1982,7 +2060,7 @@ async function handleTaxiDM(event) {
     return;
   }
   if (text === 'Частые вопросы') {
-    await sendMessage(peerId, 'FAQ такси:\n\n❓ Как рассчитывается цена?\nПо карте маршрута с учётом спроса.\n\n❓ Можно добавить попутчика?\nДа, до 2 попутчиков.\n\n❓ Комиссия за оплату?\nНаличные — 0%, счёт телефона — 7%, банковский счёт — 5%.', { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
+    await sendMessage(peerId, 'FAQ такси:\n\n❓ Как рассчитывается цена?\nПо карте маршрута (A* алгоритм) с учётом расстояния.\n\n❓ Можно добавить попутчика?\nДа, до 2 попутчиков.\n\n❓ Комиссия за оплату?\nНаличные — 0%, счёт телефона — 7%, банковский счёт — 5%.', { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
     return;
   }
 
@@ -2010,67 +2088,27 @@ async function handleTaxiDM(event) {
     } else {
       sess.data.passengers = [];
     }
-    sess.step = TAXI_STEP.ORDER_FROM_CAT;
+    sess.step = TAXI_STEP.WAITING_MAP;
     storage.clientSessions.set('taxi_'+uid, sess);
-    await showTaxiPointCats(peerId, 'Откуда:', uid, 3);
-    return;
-  }
-
-  if (sess.step === TAXI_STEP.ORDER_FROM_CAT) {
-    if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; return; }
-    const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
-    const cat = tp.categories.find(c => c.name === text);
-    if (!cat) return;
-    sess.data.fromCat = cat.id; sess.step = TAXI_STEP.ORDER_FROM;
-    storage.clientSessions.set('taxi_'+uid, sess);
-    const points = tp.points.filter(p => p.categoryId === cat.id);
-    const rows = points.map(p => [{ label: p.name }]);
-    rows.push([{ label: '← Назад' }, { label: 'Отмена', color: 'negative' }]);
-    await sendMessage(peerId, `Откуда (категория: ${cat.name}):`, { keyboard: msgKb(rows) }, 3);
-    return;
-  }
-
-  if (sess.step === TAXI_STEP.ORDER_FROM) {
-    if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; return; }
-    if (text === '← Назад') { sess.step = TAXI_STEP.ORDER_FROM_CAT; await showTaxiPointCats(peerId, 'Откуда:', uid, 3); return; }
-    const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
-    const point = tp.points.find(p => p.name === text);
-    if (!point) return;
-    sess.data.from = point; sess.step = TAXI_STEP.ORDER_TO_CAT;
-    storage.clientSessions.set('taxi_'+uid, sess);
-    await showTaxiPointCats(peerId, 'Куда:', uid, 3);
-    return;
-  }
-
-  if (sess.step === TAXI_STEP.ORDER_TO_CAT) {
-    if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; return; }
-    const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
-    const cat = tp.categories.find(c => c.name === text);
-    if (!cat) return;
-    sess.data.toCat = cat.id; sess.step = TAXI_STEP.ORDER_TO;
-    storage.clientSessions.set('taxi_'+uid, sess);
-    const points = tp.points.filter(p => p.categoryId === cat.id);
-    const rows = points.map(p => [{ label: p.name }]);
-    rows.push([{ label: '← Назад' }, { label: 'Отмена', color: 'negative' }]);
-    await sendMessage(peerId, `Куда (категория: ${cat.name}):`, { keyboard: msgKb(rows) }, 3);
-    return;
-  }
-
-  if (sess.step === TAXI_STEP.ORDER_TO) {
-    if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; return; }
-    if (text === '← Назад') { sess.step = TAXI_STEP.ORDER_TO_CAT; await showTaxiPointCats(peerId, 'Куда:', uid, 3); return; }
-    const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
-    const point = tp.points.find(p => p.name === text);
-    if (!point) return;
-    sess.data.to = point;
-    // Calculate price
-    const price = calculateTaxiPrice(sess.data.from, sess.data.to);
-    sess.data.basePrice = price;
-    sess.step = TAXI_STEP.ORDER_PROMO;
-    storage.clientSessions.set('taxi_'+uid, sess);
+    
+    // Generate map URL with user_id
+    const mapUrl = `${TAXI_CLIENT_MAP_URL}?user_id=${uid}`;
+    
     await sendMessage(peerId,
-      `Маршрут: ${sess.data.from.name} → ${sess.data.to.name}\nПримерная стоимость: ${price}р.\n\nЕсть промокод? Введите или «Пропустить»:`,
-      { keyboard: msgKb([[{ label: 'Пропустить', color: 'secondary' }], [{ label: 'Отмена', color: 'negative' }]]) }, 3);
+      `Отлично! Теперь укажите маршрут на карте.\n\nПерейдите по ссылке и выберите точки «Откуда» и «Куда»:\n${mapUrl}\n\nПосле выбора маршрута данные автоматически отправятся сюда.`,
+      { keyboard: msgKb([[{ label: 'Указать маршрут', color: 'positive' }], [{ label: 'Отмена', color: 'negative' }]]) }, 3);
+    return;
+  }
+
+  if (sess.step === TAXI_STEP.WAITING_MAP) {
+    if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; return; }
+    if (text === 'Указать маршрут') {
+      const mapUrl = `${TAXI_CLIENT_MAP_URL}?user_id=${uid}`;
+      await sendMessage(peerId, `Перейдите по ссылке для выбора маршрута:\n${mapUrl}`, {}, 3);
+      return;
+    }
+    // Wait for map order to arrive via JSONBin polling
+    await sendMessage(peerId, 'Ожидаем данные с карты... Перейдите по ссылке и выберите маршрут.', {}, 3);
     return;
   }
 
@@ -2097,7 +2135,7 @@ async function handleTaxiDM(event) {
 
   if (sess.step === TAXI_STEP.ORDER_PAYMENT) {
     if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; return; }
-    const payMap = { 'Наличными': { type: 'cash', commission: 0 }, 'Счёт телефона': { type: 'phone', commission: 0.07 }, '��анковский счёт': { type: 'bank', commission: 0.05 } };
+    const payMap = { 'Наличными': { type: 'cash', commission: 0 }, 'Счёт телефона': { type: 'phone', commission: 0.07 }, 'Банковский счёт': { type: 'bank', commission: 0.05 } };
     const pay = payMap[text];
     if (!pay) return;
     sess.data.payment = pay;
@@ -2152,6 +2190,7 @@ async function handleTaxiDM(event) {
         nick: sess.data.nick,
         passengers: sess.data.passengers || [],
         from: sess.data.from, to: sess.data.to,
+        distance: sess.data.distance,
         basePrice: sess.data.basePrice, finalPrice: sess.data.finalPrice,
         payment: sess.data.payment,
         promo: sess.data.promo?.promo?.code || null,
@@ -2189,39 +2228,40 @@ async function handleTaxiDM(event) {
   }
 }
 
-async function showTaxiPointCats(peerId, prompt, uid, groupKey) {
-  const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
-  if (!tp.categories.length) { await sendMessage(peerId, 'Точки маршрута пока не добавлены. Обратитесь к администратору.', {}, groupKey); return; }
-  const rows = tp.categories.map(c => [{ label: c.name }]);
-  rows.push([{ label: 'Отмена', color: 'negative' }]);
-  await sendMessage(peerId, prompt, { keyboard: msgKb(rows) }, groupKey);
-}
-
 async function showTaxiConfirm(peerId, uid, sess, groupKey) {
   const passText = sess.data.passengers?.length ? `\nПопутчики: ${sess.data.passengers.join(', ')}` : '';
-  const payText  = sess.data.payment.type === 'cash' ? 'Наличными' : sess.data.payment.type === 'phone' ? 'Счёт телефона' : 'Банковский счё��';
+  const payText  = sess.data.payment.type === 'cash' ? 'Наличными' : sess.data.payment.type === 'phone' ? 'Счёт телефона' : 'Банковский счёт';
   const promoText = sess.data.promoDesc ? `\nПромокод: ${sess.data.promoDesc}` : '';
+  const distText = sess.data.distance >= 1000 
+    ? `${(sess.data.distance / 1000).toFixed(2)} км` 
+    : `${Math.round(sess.data.distance)} м`;
   await sendMessage(peerId,
-    `Проверьте заказ:\n\nНик: ${sess.data.nick}${passText}\nОткуда: ${sess.data.from.name}\nКуда: ${sess.data.to.name}\nОплата: ${payText}\nСтоимость: ${sess.data.finalPrice}р.${promoText}\n\nВсё верно?`,
+    `Проверьте заказ:\n\nНик: ${sess.data.nick}${passText}\nОткуда: ${sess.data.from.name}\nКуда: ${sess.data.to.name}\nРасстояние: ${distText}\nОплата: ${payText}\nСтоимость: ${sess.data.finalPrice}р.${promoText}\n\nВсё верно?`,
     { keyboard: msgKb([
         [{ label: 'Подтвердить', color: 'positive' }, { label: 'Изменить', color: 'secondary' }],
         [{ label: 'Отмена', color: 'negative' }],
       ]) }, groupKey);
 }
 
+// Legacy function for backward compatibility (now uses map-based pricing)
 function calculateTaxiPrice(from, to) {
-  // Use stored distance or default formula
-  if (from.priceOverrides && from.priceOverrides[to.id]) return from.priceOverrides[to.id];
-  // Simple distance-based: each point has optional coords (x,y from map)
+  // Load road data calibration
+  const roadData = readJSON(ROAD_DATA_FILE, { calibration: { pixelsPerMeter: 10, pricePerKm: 15, minPrice: 100, boardingPrice: 50 } });
+  const cal = roadData.calibration;
+  
+  // Simple distance-based calculation (fallback for old system)
   if (from.x !== undefined && to.x !== undefined) {
     const dist = Math.sqrt(Math.pow(from.x - to.x, 2) + Math.pow(from.y - to.y, 2));
-    const base = Math.round(dist * 50); // 50р per unit
+    const meters = dist / cal.pixelsPerMeter;
+    const km = meters / 1000;
+    let price = cal.boardingPrice + (km * cal.pricePerKm);
+    price = Math.max(price, cal.minPrice);
     // Peak hour multiplier (18-22 MSK)
     const hour = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' })).getHours();
-    const peak = (hour >= 18 && hour <= 22) ? 1.3 : 1.0;
-    return Math.round(base * peak);
+const peak = (hour >= 18 && hour <= 22) ? 1.3 : 1.0;
+    return Math.round(price * peak);
   }
-  return from.defaultPrice || 500;
+  return from.defaultPrice || cal.minPrice || 500;
 }
 
 async function handleTaxiAdminPromos(uid, peerId, text, event) {
@@ -2350,7 +2390,7 @@ async function handleJournalMessage(event, groupKey) {
   const journalCmds = ['!онлайн', '!афк', '!вышел', '!стата'];
   const lowerText   = rawText.toLowerCase();
   const matchedCmd  = journalCmds.find(c => lowerText === c || lowerText.startsWith(c + ' '));
-  if (!matchedCmd) return false; // не команда журнала
+  if (!matchedCmd) return false; // не к��манда журнала
 
   const parts      = rawText.split(/\s+/);
   const cmd        = parts[0].toLowerCase();
@@ -2898,7 +2938,7 @@ async function handleChatCommand(event, groupKey) {
     else if (parts[1]) targetId = extractUserId(parts[1]);
     if (!targetId) { await sendMessage(peerId, 'Укажите пользователя', {}, groupKey); return true; }
     const days = parseInt(parts[reply ? 1 : 2]) || 0;
-    const reason = parts.slice(reply ? 2 : 3).join(' ') || 'Нарушение правил';
+    const reason = parts.slice(reply ? 2 : 3).join(' ') || 'Нарушение ��равил';
     addToBlacklist(targetId, days, reason, uid);
     const target = await getUser(targetId, groupKey);
     await sendMessage(peerId, `${target ? createUserLink(target) : targetId} забанен на ${days || 'ПЕРМАНЕНТНО'} дней. Причина: ${reason}`, {}, groupKey);

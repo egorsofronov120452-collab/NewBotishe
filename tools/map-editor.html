@@ -3,76 +3,78 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Редактор точек такси</title>
+  <title>Редактор дорог и объектов</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, sans-serif; background: #0f1117; color: #e2e8f0; height: 100vh; display: flex; overflow: hidden; }
 
-    /* ─── Sidebar ─── */
+    /* Sidebar */
     #sidebar {
-      width: 320px; min-width: 320px; background: #1a1d2e; border-right: 1px solid #2d3148;
+      width: 340px; min-width: 340px; background: #1a1d2e; border-right: 1px solid #2d3148;
       display: flex; flex-direction: column; overflow: hidden;
     }
     #sidebar-header { padding: 16px; border-bottom: 1px solid #2d3148; }
     #sidebar-header h1 { font-size: 15px; font-weight: 700; color: #7c8cff; }
-    #sidebar-header p  { font-size: 11px; color: #6b7280; margin-top: 2px; }
+    #sidebar-header p { font-size: 11px; color: #6b7280; margin-top: 2px; }
 
     #sidebar-tabs { display: flex; border-bottom: 1px solid #2d3148; }
-    .tab-btn { flex: 1; padding: 10px; font-size: 12px; background: none; border: none; cursor: pointer; color: #94a3b8; transition: background .15s, color .15s; }
+    .tab-btn { flex: 1; padding: 10px; font-size: 11px; background: none; border: none; cursor: pointer; color: #94a3b8; transition: background .15s, color .15s; }
     .tab-btn.active { color: #7c8cff; background: #1e2235; border-bottom: 2px solid #7c8cff; }
 
     #sidebar-content { flex: 1; overflow-y: auto; padding: 12px; }
 
-    /* ─── Form ─── */
+    /* Form */
     .form-group { margin-bottom: 10px; }
     label { display: block; font-size: 11px; color: #94a3b8; margin-bottom: 4px; }
-    input, select, textarea {
+    input, select { 
       width: 100%; padding: 7px 9px; background: #0f1117; border: 1px solid #2d3148;
       border-radius: 6px; color: #e2e8f0; font-size: 13px; outline: none;
-      transition: border-color .15s;
     }
     input:focus, select:focus { border-color: #7c8cff; }
-    select option { background: #0f1117; }
     .hint { font-size: 10px; color: #6b7280; margin-top: 3px; }
 
     .btn { display: block; width: 100%; padding: 8px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: opacity .15s; }
     .btn:hover { opacity: .85; }
     .btn-primary { background: #7c8cff; color: #fff; }
     .btn-success { background: #22c55e; color: #fff; }
-    .btn-danger  { background: #ef4444; color: #fff; }
+    .btn-danger { background: #ef4444; color: #fff; }
     .btn-secondary { background: #2d3148; color: #e2e8f0; }
+    .btn-warning { background: #f59e0b; color: #fff; }
     .btn + .btn { margin-top: 6px; }
 
-    /* ─── Point list ─── */
-    .point-item {
+    /* Tool buttons */
+    .tool-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; }
+    .tool-item {
       background: #131627; border: 1px solid #2d3148; border-radius: 8px;
-      padding: 10px; margin-bottom: 8px; cursor: pointer; transition: border-color .15s;
+      padding: 12px 8px; text-align: center; cursor: pointer; transition: all .15s;
     }
-    .point-item:hover { border-color: #7c8cff; }
-    .point-item.selected { border-color: #7c8cff; background: #1a1d2e; }
-    .point-name { font-size: 13px; font-weight: 600; }
-    .point-meta { font-size: 11px; color: #6b7280; margin-top: 2px; }
-    .point-actions { display: flex; gap: 6px; margin-top: 8px; }
-    .point-actions button { flex: 1; padding: 5px; font-size: 11px; border-radius: 4px; border: none; cursor: pointer; }
-    .btn-edit-small { background: #2d3148; color: #e2e8f0; }
-    .btn-del-small  { background: #7f1d1d; color: #fca5a5; }
+    .tool-item:hover { border-color: #7c8cff; }
+    .tool-item.active { border-color: #7c8cff; background: #1e2235; }
+    .tool-item-icon { font-size: 24px; margin-bottom: 4px; }
+    .tool-item-label { font-size: 11px; color: #94a3b8; }
 
-    /* ─── Category badges ─── */
-    .cat-badge {
-      display: inline-block; padding: 2px 8px; border-radius: 12px;
-      font-size: 10px; font-weight: 600; margin-right: 4px; margin-bottom: 4px;
-      cursor: pointer; border: 1px solid transparent; transition: all .15s;
+    /* Object list */
+    .obj-item {
+      background: #131627; border: 1px solid #2d3148; border-radius: 8px;
+      padding: 10px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px;
     }
-    .cat-badge.active { border-color: #7c8cff; }
+    .obj-icon { font-size: 20px; }
+    .obj-info { flex: 1; }
+    .obj-name { font-size: 12px; font-weight: 600; }
+    .obj-meta { font-size: 10px; color: #6b7280; }
+    .obj-del { background: #7f1d1d; color: #fca5a5; border: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; }
 
-    /* ─── Canvas area ─── */
+    /* Canvas area */
     #map-area { flex: 1; position: relative; overflow: hidden; background: #0f1117; }
-    #map-canvas { display: block; cursor: crosshair; }
+    #map-canvas { display: block; }
+    #road-canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
+
     #map-hint {
       position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
       background: rgba(0,0,0,.7); padding: 6px 14px; border-radius: 20px;
       font-size: 11px; color: #94a3b8; pointer-events: none; white-space: nowrap;
     }
+
     #zoom-controls {
       position: absolute; top: 12px; right: 12px;
       display: flex; flex-direction: column; gap: 4px;
@@ -83,117 +85,204 @@
     }
     .zoom-btn:hover { background: #2d3148; }
 
-    /* ─── Import/Export toolbar ─── */
     #toolbar {
       position: absolute; top: 12px; left: 12px;
-      display: flex; gap: 6px;
+      display: flex; gap: 6px; flex-wrap: wrap; max-width: 400px;
     }
     .tool-btn {
       padding: 6px 12px; background: #1a1d2e; border: 1px solid #2d3148;
       border-radius: 6px; color: #e2e8f0; font-size: 12px; cursor: pointer;
     }
     .tool-btn:hover { background: #2d3148; }
+    .tool-btn.active { background: #7c8cff; border-color: #7c8cff; }
 
-    /* ─── Map image overlay ─── */
-    #map-img-overlay {
-      position: absolute; top: 0; left: 0; pointer-events: none;
-      image-rendering: pixelated;
-    }
-
-    /* ─── Coord display ─── */
     #coords-display {
       position: absolute; bottom: 44px; left: 50%; transform: translateX(-50%);
       background: rgba(0,0,0,.6); padding: 3px 10px; border-radius: 12px;
       font-size: 10px; color: #6b7280; pointer-events: none;
     }
 
-    /* ─── Tab panels ─── */
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
-
     .section-title { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: .05em; margin: 12px 0 6px; }
 
-    .cat-item {
-      display: flex; align-items: center; justify-content: space-between;
-      background: #131627; border: 1px solid #2d3148; border-radius: 6px;
-      padding: 7px 10px; margin-bottom: 6px;
+    /* Color picker */
+    .color-preview {
+      width: 100%; height: 40px; border-radius: 6px; border: 2px solid #2d3148;
+      margin-bottom: 8px; cursor: pointer; transition: border-color .15s;
     }
-    .cat-item-name { font-size: 12px; }
-    .cat-del-btn { background: #7f1d1d; color: #fca5a5; border: none; padding: 2px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; }
+    .color-preview:hover { border-color: #7c8cff; }
+
+    /* Brush size slider */
+    input[type="range"] {
+      width: 100%; height: 6px; -webkit-appearance: none; background: #2d3148;
+      border-radius: 3px; outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 16px; height: 16px;
+      background: #7c8cff; border-radius: 50%; cursor: pointer;
+    }
+
+    /* Status indicator */
+    .status-bar {
+      background: #131627; border: 1px solid #2d3148; border-radius: 6px;
+      padding: 8px; margin-bottom: 10px; font-size: 11px;
+    }
+    .status-item { display: flex; justify-content: space-between; margin-bottom: 4px; }
+    .status-item:last-child { margin-bottom: 0; }
+    .status-label { color: #6b7280; }
+    .status-value { color: #e2e8f0; font-weight: 600; }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,.7); display: none; align-items: center; justify-content: center; z-index: 1000;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal-box {
+      background: #1a1d2e; border: 1px solid #2d3148; border-radius: 12px;
+      padding: 20px; width: 90%; max-width: 400px;
+    }
+    .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
   </style>
 </head>
 <body>
 
-<!-- ─── Sidebar ─── -->
+<!-- Sidebar -->
 <div id="sidebar">
   <div id="sidebar-header">
-    <h1>Редактор точек такси</h1>
-    <p>Нажмите на карту чтобы разместить точку</p>
+    <h1>Редактор дорог</h1>
+    <p>Автовыделение дорог, радары и светофоры</p>
   </div>
 
   <div id="sidebar-tabs">
-    <button class="tab-btn active" data-tab="points">Точки</button>
-    <button class="tab-btn" data-tab="categories">Категории</button>
-    <button class="tab-btn" data-tab="add">Добавить</button>
+    <button class="tab-btn active" data-tab="road">Дорога</button>
+    <button class="tab-btn" data-tab="objects">Объекты</button>
+    <button class="tab-btn" data-tab="calibration">Калибровка</button>
   </div>
 
   <div id="sidebar-content">
 
-    <!-- Points tab -->
-    <div class="tab-panel active" id="tab-points">
-      <div class="section-title">Фильтр по категории</div>
-      <div id="cat-filter"></div>
-      <div class="section-title">Точки (<span id="pts-count">0</span>)</div>
-      <div id="points-list"></div>
-    </div>
-
-    <!-- Categories tab -->
-    <div class="tab-panel" id="tab-categories">
-      <div class="section-title">Категории</div>
-      <div id="cat-list"></div>
-      <div class="section-title">Добавить категорию</div>
-      <div class="form-group">
-        <label>Название</label>
-        <input type="text" id="new-cat-name" placeholder="Авто, Гос. учреждения..." />
-      </div>
-      <button class="btn btn-primary" id="add-cat-btn">Добавить категорию</button>
-    </div>
-
-    <!-- Add/edit point tab -->
-    <div class="tab-panel" id="tab-add">
-      <div class="section-title" id="form-title">Новая точка</div>
-      <div class="form-group">
-        <label>Название точки</label>
-        <input type="text" id="pt-name" placeholder="Центральный вокзал" />
-      </div>
-      <div class="form-group">
-        <label>Категория</label>
-        <select id="pt-cat"></select>
-      </div>
-      <div class="form-group">
-        <label>Базовая цена (₽)</label>
-        <input type="number" id="pt-price" value="500" min="0" />
-        <div class="hint">Используется если нет координат</div>
-      </div>
-      <div class="form-group">
-        <label>Координаты X, Y</label>
-        <div style="display:flex;gap:6px">
-          <input type="number" id="pt-x" placeholder="X" />
-          <input type="number" id="pt-y" placeholder="Y" />
+    <!-- Road tab -->
+    <div class="tab-panel active" id="tab-road">
+      <div class="section-title">Инструменты</div>
+      <div class="tool-grid">
+        <div class="tool-item active" data-tool="floodfill">
+          <div class="tool-item-icon">🪄</div>
+          <div class="tool-item-label">Автовыделение</div>
         </div>
-        <div class="hint">Кликните на карту для автозаполнения</div>
+        <div class="tool-item" data-tool="brush-add">
+          <div class="tool-item-icon">🖌️</div>
+          <div class="tool-item-label">Добавить</div>
+        </div>
+        <div class="tool-item" data-tool="brush-remove">
+          <div class="tool-item-icon">🧽</div>
+          <div class="tool-item-label">Убрать</div>
+        </div>
+        <div class="tool-item" data-tool="clear">
+          <div class="tool-item-icon">🗑️</div>
+          <div class="tool-item-label">Очистить</div>
+        </div>
       </div>
-      <button class="btn btn-primary" id="save-pt-btn">Сохранить точку</button>
-      <button class="btn btn-secondary" id="cancel-pt-btn" style="display:none;margin-top:6px">Отмена</button>
+
+      <div class="section-title">Допуск цвета</div>
+      <div class="form-group">
+        <input type="range" id="color-tolerance" min="1" max="100" value="32" />
+        <div class="hint">Текущий: <span id="tolerance-value">32</span></div>
+      </div>
+
+      <div class="section-title">Размер кисти</div>
+      <div class="form-group">
+        <input type="range" id="brush-size" min="5" max="100" value="20" />
+        <div class="hint">Текущий: <span id="brush-size-value">20</span>px</div>
+      </div>
+
+      <div class="section-title">Статус</div>
+      <div class="status-bar">
+        <div class="status-item">
+          <span class="status-label">Пикселей дороги:</span>
+          <span class="status-value" id="road-pixels">0</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">Карта загружена:</span>
+          <span class="status-value" id="map-loaded">Нет</span>
+        </div>
+      </div>
+
+      <button class="btn btn-success" id="export-road-btn">Экспорт данных дороги</button>
     </div>
 
-  </div><!-- /sidebar-content -->
+    <!-- Objects tab -->
+    <div class="tab-panel" id="tab-objects">
+      <div class="section-title">Добавить объект</div>
+      <div class="tool-grid">
+        <div class="tool-item" data-place="radar">
+          <div class="tool-item-icon">📷</div>
+          <div class="tool-item-label">Радар</div>
+        </div>
+        <div class="tool-item" data-place="traffic-light">
+          <div class="tool-item-icon">🚦</div>
+          <div class="tool-item-label">Светофор</div>
+        </div>
+      </div>
+
+      <div class="section-title">Настройки размещения</div>
+      <div class="form-group">
+        <label>Скорость радара (км/ч)</label>
+        <input type="number" id="radar-speed" value="60" min="20" max="200" />
+      </div>
+      <div class="form-group">
+        <label>Штраф за превышение (₽)</label>
+        <input type="number" id="radar-fine" value="500" min="0" />
+      </div>
+
+      <div class="section-title">Объекты на карте (<span id="obj-count">0</span>)</div>
+      <div id="objects-list"></div>
+    </div>
+
+    <!-- Calibration tab -->
+    <div class="tab-panel" id="tab-calibration">
+      <div class="section-title">Калибровка масштаба</div>
+      <div class="form-group">
+        <label>Пикселей на метр</label>
+        <input type="number" id="pixels-per-meter" value="10" min="1" step="0.1" />
+        <div class="hint">Измерьте известное расстояние на карте</div>
+      </div>
+
+      <div class="section-title">Тарифы такси</div>
+      <div class="form-group">
+        <label>Цена за км (₽)</label>
+        <input type="number" id="price-per-km" value="15" min="1" />
+      </div>
+      <div class="form-group">
+        <label>Минимальная поездка (₽)</label>
+        <input type="number" id="min-price" value="100" min="0" />
+      </div>
+      <div class="form-group">
+        <label>Посадка (₽)</label>
+        <input type="number" id="boarding-price" value="50" min="0" />
+      </div>
+
+      <div class="section-title">JSONBin.io (для клиентской карты)</div>
+      <div class="form-group">
+        <label>Bin ID</label>
+        <input type="text" id="jsonbin-id" placeholder="Вставьте ID бина" />
+      </div>
+      <div class="form-group">
+        <label>API Key</label>
+        <input type="text" id="jsonbin-key" placeholder="X-Master-Key" />
+      </div>
+      <button class="btn btn-primary" id="save-calibration-btn">Сохранить настройки</button>
+    </div>
+
+  </div>
 </div>
 
-<!-- ─── Map area ─── -->
+<!-- Map area -->
 <div id="map-area">
   <canvas id="map-canvas"></canvas>
-  <div id="map-hint">Нажмите на карту чтобы задать координаты точки</div>
+  <canvas id="road-canvas"></canvas>
+  <div id="map-hint">Загрузите карту и кликните на дорогу для автовыделения</div>
   <div id="coords-display">X: 0, Y: 0</div>
 
   <div id="zoom-controls">
@@ -203,39 +292,84 @@
   </div>
 
   <div id="toolbar">
-    <button class="tool-btn" id="load-map-btn">🗺 Загрузить фото карты</button>
-    <button class="tool-btn" id="export-btn">📤 Экспорт JSON</button>
-    <button class="tool-btn" id="import-btn">📥 Импорт JSON</button>
+    <button class="tool-btn" id="load-map-btn">Загрузить карту</button>
+    <button class="tool-btn" id="import-data-btn">Импорт данных</button>
+    <input type="file" id="map-file" accept="image/*" style="display:none" />
     <input type="file" id="import-file" accept=".json" style="display:none" />
-    <input type="file" id="map-image-file" accept="image/*" style="display:none" />
+  </div>
+</div>
+
+<!-- Confirm modal -->
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal-box">
+    <div class="modal-title">Подтверждение</div>
+    <p id="confirm-text" style="margin-bottom: 16px; font-size: 13px; color: #94a3b8;"></p>
+    <div style="display: flex; gap: 8px;">
+      <button class="btn btn-secondary" id="confirm-cancel" style="flex:1">Отмена</button>
+      <button class="btn btn-danger" id="confirm-ok" style="flex:1">Да</button>
+    </div>
   </div>
 </div>
 
 <script>
 // ─────────────────────── STATE ────────────────────────────────
-let state = {
-  categories: [],
-  points: [],
-  // canvas
+const state = {
+  // Map & canvas
+  mapImage: null,
+  mapImageData: null,
   zoom: 1,
   panX: 0,
   panY: 0,
-  mapImage: null,
-  mapImageUrl: null,
-  // interaction
-  selectedPointId: null,
-  editingPointId: null,
-  filterCat: null,
+  
+  // Road mask (Uint8Array: 1 = road, 0 = not road)
+  roadMask: null,
+  roadWidth: 0,
+  roadHeight: 0,
+  
+  // Tools
+  currentTool: 'floodfill',
+  placingObject: null,
+  brushSize: 20,
+  colorTolerance: 32,
+  
+  // Objects (radars, traffic lights)
+  objects: [],
+  
+  // Calibration
+  pixelsPerMeter: 10,
+  pricePerKm: 15,
+  minPrice: 100,
+  boardingPrice: 50,
+  
+  // JSONBin
+  jsonbinId: '',
+  jsonbinKey: '',
+  
+  // Interaction
   isPanning: false,
+  isDrawing: false,
   lastMouse: { x: 0, y: 0 },
 };
 
-const STORAGE_KEY = 'taxi_map_editor_v1';
-const POINT_COLORS = ['#7c8cff','#22c55e','#f59e0b','#ef4444','#06b6d4','#a855f7','#ec4899','#14b8a6'];
+const STORAGE_KEY = 'road_editor_v2';
+
+// ─────────────────────── ELEMENTS ─────────────────────────────
+const mapCanvas = document.getElementById('map-canvas');
+const roadCanvas = document.getElementById('road-canvas');
+const mapCtx = mapCanvas.getContext('2d');
+const roadCtx = roadCanvas.getContext('2d');
 
 // ─────────────────────── PERSISTENCE ──────────────────────────
 function save() {
-  const data = { categories: state.categories, points: state.points, mapImageUrl: state.mapImageUrl };
+  const data = {
+    objects: state.objects,
+    pixelsPerMeter: state.pixelsPerMeter,
+    pricePerKm: state.pricePerKm,
+    minPrice: state.minPrice,
+    boardingPrice: state.boardingPrice,
+    jsonbinId: state.jsonbinId,
+    jsonbinKey: state.jsonbinKey,
+  };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
@@ -244,34 +378,36 @@ function load() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
     const data = JSON.parse(raw);
-    state.categories = data.categories || [];
-    state.points = data.points || [];
-    if (data.mapImageUrl) {
-      loadImageFromUrl(data.mapImageUrl);
-    }
-  } catch(e) {}
-}
-
-function loadImageFromUrl(url) {
-  const img = new Image();
-  img.onload = () => { state.mapImage = img; state.mapImageUrl = url; redraw(); };
-  img.src = url;
+    state.objects = data.objects || [];
+    state.pixelsPerMeter = data.pixelsPerMeter || 10;
+    state.pricePerKm = data.pricePerKm || 15;
+    state.minPrice = data.minPrice || 100;
+    state.boardingPrice = data.boardingPrice || 50;
+    state.jsonbinId = data.jsonbinId || '';
+    state.jsonbinKey = data.jsonbinKey || '';
+    
+    // Update UI
+    document.getElementById('pixels-per-meter').value = state.pixelsPerMeter;
+    document.getElementById('price-per-km').value = state.pricePerKm;
+    document.getElementById('min-price').value = state.minPrice;
+    document.getElementById('boarding-price').value = state.boardingPrice;
+    document.getElementById('jsonbin-id').value = state.jsonbinId;
+    document.getElementById('jsonbin-key').value = state.jsonbinKey;
+  } catch(e) { console.error('Load error:', e); }
 }
 
 // ─────────────────────── CANVAS SETUP ─────────────────────────
-const canvas = document.getElementById('map-canvas');
-const ctx    = canvas.getContext('2d');
-
-function resizeCanvas() {
+function resizeCanvases() {
   const area = document.getElementById('map-area');
-  canvas.width  = area.clientWidth;
-  canvas.height = area.clientHeight;
+  mapCanvas.width = area.clientWidth;
+  mapCanvas.height = area.clientHeight;
+  roadCanvas.width = area.clientWidth;
+  roadCanvas.height = area.clientHeight;
   redraw();
 }
-window.addEventListener('resize', resizeCanvas);
-resizeCanvas();
+window.addEventListener('resize', resizeCanvases);
 
-// ─────────────────────── DRAWING ──────────────────────────────
+// ─────────────────────── COORDINATE TRANSFORM ─────────────────
 function worldToScreen(wx, wy) {
   return { x: wx * state.zoom + state.panX, y: wy * state.zoom + state.panY };
 }
@@ -279,160 +415,327 @@ function screenToWorld(sx, sy) {
   return { x: (sx - state.panX) / state.zoom, y: (sy - state.panY) / state.zoom };
 }
 
-function getCatColor(catId) {
-  const idx = state.categories.findIndex(c => c.id === catId);
-  return POINT_COLORS[idx % POINT_COLORS.length] || '#7c8cff';
-}
-
+// ─────────────────────── DRAWING ──────────────────────────────
 function redraw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Background grid
-  ctx.fillStyle = '#0f1117';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // Clear
+  mapCtx.fillStyle = '#0f1117';
+  mapCtx.fillRect(0, 0, mapCanvas.width, mapCanvas.height);
+  
+  // Grid
   drawGrid();
-
+  
   // Map image
   if (state.mapImage) {
     const { x, y } = worldToScreen(0, 0);
-    ctx.globalAlpha = 0.85;
-    ctx.drawImage(state.mapImage, x, y, state.mapImage.width * state.zoom, state.mapImage.height * state.zoom);
-    ctx.globalAlpha = 1;
+    mapCtx.globalAlpha = 0.9;
+    mapCtx.drawImage(state.mapImage, x, y, state.mapImage.width * state.zoom, state.mapImage.height * state.zoom);
+    mapCtx.globalAlpha = 1;
   }
-
-  // Draw points
-  const visible = state.filterCat
-    ? state.points.filter(p => p.categoryId === state.filterCat)
-    : state.points;
-
-  for (const pt of visible) {
-    if (pt.x === undefined || pt.y === undefined) continue;
-    const { x, y } = worldToScreen(pt.x, pt.y);
-    const color = getCatColor(pt.categoryId);
-    const isSelected = pt.id === state.selectedPointId;
-
-    // Shadow
-    ctx.shadowColor = color;
-    ctx.shadowBlur  = isSelected ? 12 : 4;
-
-    // Circle
-    ctx.beginPath();
-    ctx.arc(x, y, isSelected ? 10 : 7, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.shadowBlur = 0;
-
-    // Border
-    ctx.beginPath();
-    ctx.arc(x, y, isSelected ? 10 : 7, 0, Math.PI * 2);
-    ctx.strokeStyle = isSelected ? '#fff' : 'rgba(255,255,255,0.4)';
-    ctx.lineWidth   = isSelected ? 2 : 1;
-    ctx.stroke();
-
-    // Label
-    ctx.font = isSelected ? 'bold 12px system-ui' : '11px system-ui';
-    ctx.fillStyle = '#fff';
-    ctx.textAlign = 'center';
-    ctx.shadowColor = '#000';
-    ctx.shadowBlur  = 4;
-    ctx.fillText(pt.name, x, y - 14);
-    ctx.shadowBlur  = 0;
+  
+  // Draw objects
+  for (const obj of state.objects) {
+    const { x, y } = worldToScreen(obj.x, obj.y);
+    const size = obj.width * state.zoom;
+    
+    if (obj.type === 'radar') {
+      mapCtx.fillStyle = 'rgba(239, 68, 68, 0.3)';
+      mapCtx.beginPath();
+      mapCtx.arc(x, y, size, 0, Math.PI * 2);
+      mapCtx.fill();
+      
+      mapCtx.font = `${Math.max(12, size * 0.4)}px system-ui`;
+      mapCtx.textAlign = 'center';
+      mapCtx.fillStyle = '#fff';
+      mapCtx.fillText('📷', x, y + 5);
+      mapCtx.font = '10px system-ui';
+      mapCtx.fillText(`${obj.speedLimit}км/ч`, x, y + size + 12);
+    } else if (obj.type === 'traffic-light') {
+      mapCtx.fillStyle = 'rgba(34, 197, 94, 0.3)';
+      mapCtx.beginPath();
+      mapCtx.arc(x, y, size * 0.7, 0, Math.PI * 2);
+      mapCtx.fill();
+      
+      mapCtx.font = `${Math.max(14, size * 0.5)}px system-ui`;
+      mapCtx.textAlign = 'center';
+      mapCtx.fillStyle = '#fff';
+      mapCtx.fillText('🚦', x, y + 5);
+    }
   }
+  
+  // Draw road overlay
+  drawRoadOverlay();
 }
 
 function drawGrid() {
   const step = 50 * state.zoom;
   if (step < 8) return;
-  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
-  ctx.lineWidth = 1;
+  mapCtx.strokeStyle = 'rgba(255,255,255,0.04)';
+  mapCtx.lineWidth = 1;
   const startX = state.panX % step;
   const startY = state.panY % step;
-  for (let x = startX; x < canvas.width; x += step) {
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+  for (let x = startX; x < mapCanvas.width; x += step) {
+    mapCtx.beginPath(); mapCtx.moveTo(x, 0); mapCtx.lineTo(x, mapCanvas.height); mapCtx.stroke();
   }
-  for (let y = startY; y < canvas.height; y += step) {
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+  for (let y = startY; y < mapCanvas.height; y += step) {
+    mapCtx.beginPath(); mapCtx.moveTo(0, y); mapCtx.lineTo(mapCanvas.width, y); mapCtx.stroke();
   }
 }
 
-// ─────────────────────── INTERACTION ──────────────────────────
-canvas.addEventListener('mousedown', e => {
-  if (e.button === 1 || e.button === 2) {
-    state.isPanning = true; state.lastMouse = { x: e.clientX, y: e.clientY }; return;
+function drawRoadOverlay() {
+  if (!state.roadMask || !state.mapImage) return;
+  
+  roadCtx.clearRect(0, 0, roadCanvas.width, roadCanvas.height);
+  
+  const { x: sx, y: sy } = worldToScreen(0, 0);
+  const sw = state.roadWidth * state.zoom;
+  const sh = state.roadHeight * state.zoom;
+  
+  // Create overlay image
+  const overlayCanvas = document.createElement('canvas');
+  overlayCanvas.width = state.roadWidth;
+  overlayCanvas.height = state.roadHeight;
+  const overlayCtx = overlayCanvas.getContext('2d');
+  const imgData = overlayCtx.createImageData(state.roadWidth, state.roadHeight);
+  
+  for (let i = 0; i < state.roadMask.length; i++) {
+    if (state.roadMask[i]) {
+      imgData.data[i * 4] = 124;     // R
+      imgData.data[i * 4 + 1] = 140; // G
+      imgData.data[i * 4 + 2] = 255; // B
+      imgData.data[i * 4 + 3] = 100; // A
+    }
   }
-  const rect = canvas.getBoundingClientRect();
+  
+  overlayCtx.putImageData(imgData, 0, 0);
+  roadCtx.drawImage(overlayCanvas, sx, sy, sw, sh);
+  
+  // Update stats
+  const roadPixels = state.roadMask.reduce((sum, v) => sum + v, 0);
+  document.getElementById('road-pixels').textContent = roadPixels.toLocaleString();
+}
+
+// ─────────────────────── FLOOD FILL ───────────────────────────
+function floodFill(startX, startY) {
+  if (!state.mapImageData) return;
+  
+  const w = state.roadWidth;
+  const h = state.roadHeight;
+  const data = state.mapImageData.data;
+  const tolerance = state.colorTolerance;
+  
+  // Get target color
+  const idx = (startY * w + startX) * 4;
+  const targetR = data[idx];
+  const targetG = data[idx + 1];
+  const targetB = data[idx + 2];
+  
+  // Create visited array
+  const visited = new Uint8Array(w * h);
+  const stack = [[startX, startY]];
+  let filledCount = 0;
+  
+  function colorMatch(i) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    return Math.abs(r - targetR) <= tolerance &&
+           Math.abs(g - targetG) <= tolerance &&
+           Math.abs(b - targetB) <= tolerance;
+  }
+  
+  while (stack.length > 0) {
+    const [x, y] = stack.pop();
+    const pos = y * w + x;
+    
+    if (x < 0 || x >= w || y < 0 || y >= h) continue;
+    if (visited[pos]) continue;
+    
+    const pixelIdx = pos * 4;
+    if (!colorMatch(pixelIdx)) continue;
+    
+    visited[pos] = 1;
+    state.roadMask[pos] = 1;
+    filledCount++;
+    
+    stack.push([x + 1, y]);
+    stack.push([x - 1, y]);
+    stack.push([x, y + 1]);
+    stack.push([x, y - 1]);
+  }
+  
+  drawRoadOverlay();
+  return filledCount;
+}
+
+// ─────────────────────── BRUSH TOOLS ──────────────────────────
+function applyBrush(worldX, worldY, add) {
+  if (!state.roadMask) return;
+  
+  const radius = state.brushSize / 2;
+  const x0 = Math.max(0, Math.floor(worldX - radius));
+  const y0 = Math.max(0, Math.floor(worldY - radius));
+  const x1 = Math.min(state.roadWidth - 1, Math.ceil(worldX + radius));
+  const y1 = Math.min(state.roadHeight - 1, Math.ceil(worldY + radius));
+  
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const dist = Math.hypot(x - worldX, y - worldY);
+      if (dist <= radius) {
+        state.roadMask[y * state.roadWidth + x] = add ? 1 : 0;
+      }
+    }
+  }
+  
+  drawRoadOverlay();
+}
+
+// ─────────────────────── EVENT HANDLERS ───────────────────────
+mapCanvas.addEventListener('mousedown', e => {
+  const rect = mapCanvas.getBoundingClientRect();
   const sx = e.clientX - rect.left;
   const sy = e.clientY - rect.top;
-
-  // Check hit on existing point
-  const hit = hitTest(sx, sy);
-  if (hit) {
-    state.selectedPointId = hit.id;
-    document.getElementById('pt-x').value = Math.round(hit.x);
-    document.getElementById('pt-y').value = Math.round(hit.y);
-    document.getElementById('pt-name').value = hit.name;
-    document.getElementById('pt-price').value = hit.defaultPrice || 500;
-    document.getElementById('pt-cat').value = hit.categoryId || '';
-    state.editingPointId = hit.id;
-    document.getElementById('form-title').textContent = 'Редактировать точку';
-    document.getElementById('cancel-pt-btn').style.display = '';
-    setActiveTab('add');
-    redraw(); renderPointsList(); return;
+  
+  // Middle/right click = pan
+  if (e.button === 1 || e.button === 2) {
+    state.isPanning = true;
+    state.lastMouse = { x: e.clientX, y: e.clientY };
+    mapCanvas.style.cursor = 'grabbing';
+    return;
   }
-
-  // Place pending coords
-  const { x, y } = screenToWorld(sx, sy);
-  document.getElementById('pt-x').value = Math.round(x);
-  document.getElementById('pt-y').value = Math.round(y);
-  setActiveTab('add');
-  redraw();
+  
+  const { x: wx, y: wy } = screenToWorld(sx, sy);
+  
+  // Place object
+  if (state.placingObject) {
+    if (!state.mapImage) {
+      alert('Сначала загрузите карту');
+      return;
+    }
+    
+    // Check if on road (for size calculation)
+    let roadWidth = 30; // default
+    if (state.roadMask) {
+      // Find road width at this point
+      let leftEdge = Math.floor(wx);
+      let rightEdge = Math.floor(wx);
+      const y = Math.floor(wy);
+      
+      while (leftEdge > 0 && state.roadMask[y * state.roadWidth + leftEdge]) leftEdge--;
+      while (rightEdge < state.roadWidth && state.roadMask[y * state.roadWidth + rightEdge]) rightEdge++;
+      
+      roadWidth = Math.max(20, (rightEdge - leftEdge) / 2);
+    }
+    
+    const obj = {
+      id: 'obj_' + Date.now(),
+      type: state.placingObject,
+      x: Math.round(wx),
+      y: Math.round(wy),
+      width: roadWidth,
+    };
+    
+    if (state.placingObject === 'radar') {
+      obj.speedLimit = parseInt(document.getElementById('radar-speed').value) || 60;
+      obj.fine = parseInt(document.getElementById('radar-fine').value) || 500;
+    }
+    
+    state.objects.push(obj);
+    state.placingObject = null;
+    document.querySelectorAll('[data-place]').forEach(el => el.classList.remove('active'));
+    save();
+    renderObjectsList();
+    redraw();
+    return;
+  }
+  
+  // Tool actions
+  if (state.currentTool === 'floodfill' && state.mapImage) {
+    const ix = Math.floor(wx);
+    const iy = Math.floor(wy);
+    if (ix >= 0 && ix < state.roadWidth && iy >= 0 && iy < state.roadHeight) {
+      const count = floodFill(ix, iy);
+      document.getElementById('map-hint').textContent = `Выделено ${count.toLocaleString()} пикселей`;
+    }
+  } else if (state.currentTool === 'brush-add' || state.currentTool === 'brush-remove') {
+    state.isDrawing = true;
+    applyBrush(wx, wy, state.currentTool === 'brush-add');
+  } else if (state.currentTool === 'clear') {
+    showConfirm('Очистить всю выделенную дорогу?', () => {
+      state.roadMask.fill(0);
+      drawRoadOverlay();
+    });
+  }
 });
 
-canvas.addEventListener('mousemove', e => {
+mapCanvas.addEventListener('mousemove', e => {
+  const rect = mapCanvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left;
+  const sy = e.clientY - rect.top;
+  
   if (state.isPanning) {
     state.panX += e.clientX - state.lastMouse.x;
     state.panY += e.clientY - state.lastMouse.y;
     state.lastMouse = { x: e.clientX, y: e.clientY };
-    redraw(); return;
+    redraw();
+    return;
   }
-  const rect = canvas.getBoundingClientRect();
-  const w = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
-  document.getElementById('coords-display').textContent = `X: ${Math.round(w.x)}, Y: ${Math.round(w.y)}`;
+  
+  const { x: wx, y: wy } = screenToWorld(sx, sy);
+  document.getElementById('coords-display').textContent = `X: ${Math.round(wx)}, Y: ${Math.round(wy)}`;
+  
+  if (state.isDrawing && (state.currentTool === 'brush-add' || state.currentTool === 'brush-remove')) {
+    applyBrush(wx, wy, state.currentTool === 'brush-add');
+  }
+  
+  // Update cursor
+  if (state.placingObject) {
+    mapCanvas.style.cursor = 'crosshair';
+  } else if (state.currentTool === 'brush-add' || state.currentTool === 'brush-remove') {
+    mapCanvas.style.cursor = 'crosshair';
+  } else {
+    mapCanvas.style.cursor = 'default';
+  }
 });
 
-canvas.addEventListener('mouseup', () => { state.isPanning = false; });
-canvas.addEventListener('contextmenu', e => e.preventDefault());
+mapCanvas.addEventListener('mouseup', () => {
+  state.isPanning = false;
+  state.isDrawing = false;
+  mapCanvas.style.cursor = 'default';
+});
 
-canvas.addEventListener('wheel', e => {
+mapCanvas.addEventListener('mouseleave', () => {
+  state.isPanning = false;
+  state.isDrawing = false;
+});
+
+mapCanvas.addEventListener('contextmenu', e => e.preventDefault());
+
+mapCanvas.addEventListener('wheel', e => {
   e.preventDefault();
-  const rect = canvas.getBoundingClientRect();
+  const rect = mapCanvas.getBoundingClientRect();
   const sx = e.clientX - rect.left;
   const sy = e.clientY - rect.top;
   const factor = e.deltaY < 0 ? 1.1 : 0.9;
   state.panX = sx - (sx - state.panX) * factor;
   state.panY = sy - (sy - state.panY) * factor;
-  state.zoom = Math.max(0.1, Math.min(8, state.zoom * factor));
+  state.zoom = Math.max(0.1, Math.min(10, state.zoom * factor));
   redraw();
 }, { passive: false });
 
-function hitTest(sx, sy) {
-  for (const pt of [...state.points].reverse()) {
-    if (pt.x === undefined) continue;
-    const { x, y } = worldToScreen(pt.x, pt.y);
-    if (Math.hypot(sx - x, sy - y) <= 12) return pt;
-  }
-  return null;
-}
-
 // ─────────────────────── ZOOM CONTROLS ────────────────────────
 document.getElementById('zoom-in').addEventListener('click', () => {
-  state.zoom = Math.min(8, state.zoom * 1.2); redraw();
+  state.zoom = Math.min(10, state.zoom * 1.2);
+  redraw();
 });
 document.getElementById('zoom-out').addEventListener('click', () => {
-  state.zoom = Math.max(0.1, state.zoom / 1.2); redraw();
+  state.zoom = Math.max(0.1, state.zoom / 1.2);
+  redraw();
 });
 document.getElementById('zoom-reset').addEventListener('click', () => {
-  state.zoom = 1; state.panX = 0; state.panY = 0; redraw();
+  state.zoom = 1;
+  state.panX = 0;
+  state.panY = 0;
+  redraw();
 });
 
 // ─────────────────────── TABS ─────────────────────────────────
@@ -444,203 +747,278 @@ document.querySelectorAll('.tab-btn').forEach(b => {
   b.addEventListener('click', () => setActiveTab(b.dataset.tab));
 });
 
-// ─────────────────────── CATEGORIES ───────────────────────────
-function renderCatList() {
-  // Sidebar categories tab
-  const list = document.getElementById('cat-list');
-  list.innerHTML = '';
-  for (const c of state.categories) {
-    const el = document.createElement('div');
-    el.className = 'cat-item';
-    el.innerHTML = `<span class="cat-item-name" style="color:${getCatColor(c.id)}">${c.name}</span>
-      <button class="cat-del-btn" data-id="${c.id}">Удалить</button>`;
-    list.querySelector ? list.appendChild(el) : (list.innerHTML += ''); list.appendChild(el);
-  }
-  list.querySelectorAll('.cat-del-btn').forEach(b => {
-    b.addEventListener('click', () => {
-      const id = b.dataset.id;
-      state.categories = state.categories.filter(c => c.id !== id);
-      state.points = state.points.filter(p => p.categoryId !== id);
-      save(); renderAll();
-    });
+// ─────────────────────── TOOLS ────────────────────────────────
+document.querySelectorAll('[data-tool]').forEach(el => {
+  el.addEventListener('click', () => {
+    const tool = el.dataset.tool;
+    
+    if (tool === 'clear') {
+      showConfirm('Очистить всю выделенную дорогу?', () => {
+        if (state.roadMask) {
+          state.roadMask.fill(0);
+          drawRoadOverlay();
+        }
+      });
+      return;
+    }
+    
+    state.currentTool = tool;
+    document.querySelectorAll('[data-tool]').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
   });
-
-  // Category filter (points tab)
-  const filter = document.getElementById('cat-filter');
-  filter.innerHTML = '';
-  const allBadge = document.createElement('span');
-  allBadge.className = 'cat-badge' + (!state.filterCat ? ' active' : '');
-  allBadge.style.background = '#2d3148'; allBadge.style.color = '#e2e8f0';
-  allBadge.textContent = 'Все';
-  allBadge.addEventListener('click', () => { state.filterCat = null; renderAll(); });
-  filter.appendChild(allBadge);
-  for (const c of state.categories) {
-    const badge = document.createElement('span');
-    badge.className = 'cat-badge' + (state.filterCat === c.id ? ' active' : '');
-    badge.style.background = getCatColor(c.id) + '33';
-    badge.style.color = getCatColor(c.id);
-    badge.textContent = c.name;
-    badge.addEventListener('click', () => { state.filterCat = c.id; renderAll(); });
-    filter.appendChild(badge);
-  }
-
-  // Category select in add form
-  const sel = document.getElementById('pt-cat');
-  const prev = sel.value;
-  sel.innerHTML = '<option value="">— выберите категорию —</option>';
-  for (const c of state.categories) {
-    sel.innerHTML += `<option value="${c.id}">${c.name}</option>`;
-  }
-  if (prev) sel.value = prev;
-}
-
-document.getElementById('add-cat-btn').addEventListener('click', () => {
-  const name = document.getElementById('new-cat-name').value.trim();
-  if (!name) return;
-  state.categories.push({ id: 'cat_' + Date.now(), name });
-  document.getElementById('new-cat-name').value = '';
-  save(); renderAll();
 });
 
-// ─────────────────────── POINTS LIST ──────────────────────────
-function renderPointsList() {
-  const list = document.getElementById('points-list');
-  const visible = state.filterCat
-    ? state.points.filter(p => p.categoryId === state.filterCat)
-    : state.points;
-  document.getElementById('pts-count').textContent = visible.length;
-  list.innerHTML = '';
-  for (const pt of visible) {
-    const cat = state.categories.find(c => c.id === pt.categoryId);
-    const color = getCatColor(pt.categoryId);
-    const el = document.createElement('div');
-    el.className = 'point-item' + (pt.id === state.selectedPointId ? ' selected' : '');
-    el.innerHTML = `
-      <div class="point-name" style="color:${color}">${pt.name}</div>
-      <div class="point-meta">${cat ? cat.name : '—'} | ${pt.defaultPrice || 0}₽ | X:${pt.x ?? '—'} Y:${pt.y ?? '—'}</div>
-      <div class="point-actions">
-        <button class="btn-edit-small" data-id="${pt.id}">Изменить</button>
-        <button class="btn-del-small" data-id="${pt.id}">Удалить</button>
-      </div>`;
-    list.appendChild(el);
-  }
-  list.querySelectorAll('.btn-edit-small').forEach(b => {
-    b.addEventListener('click', e => { e.stopPropagation(); const pt = state.points.find(p => p.id === b.dataset.id); if (!pt) return;
-      state.selectedPointId = pt.id; state.editingPointId = pt.id;
-      document.getElementById('pt-name').value  = pt.name;
-      document.getElementById('pt-cat').value   = pt.categoryId || '';
-      document.getElementById('pt-price').value = pt.defaultPrice || 500;
-      document.getElementById('pt-x').value     = pt.x ?? '';
-      document.getElementById('pt-y').value     = pt.y ?? '';
-      document.getElementById('form-title').textContent = 'Редактировать точку';
-      document.getElementById('cancel-pt-btn').style.display = '';
-      setActiveTab('add'); redraw();
-    });
+// Object placement
+document.querySelectorAll('[data-place]').forEach(el => {
+  el.addEventListener('click', () => {
+    const type = el.dataset.place;
+    state.placingObject = state.placingObject === type ? null : type;
+    document.querySelectorAll('[data-place]').forEach(t => t.classList.remove('active'));
+    if (state.placingObject) {
+      el.classList.add('active');
+      document.getElementById('map-hint').textContent = `Кликните на карту для размещения ${type === 'radar' ? 'радара' : 'светофора'}`;
+    } else {
+      document.getElementById('map-hint').textContent = '';
+    }
   });
-  list.querySelectorAll('.btn-del-small').forEach(b => {
-    b.addEventListener('click', e => { e.stopPropagation();
-      state.points = state.points.filter(p => p.id !== b.dataset.id);
-      if (state.selectedPointId === b.dataset.id) state.selectedPointId = null;
-      save(); renderAll();
+});
+
+// Sliders
+document.getElementById('color-tolerance').addEventListener('input', e => {
+  state.colorTolerance = parseInt(e.target.value);
+  document.getElementById('tolerance-value').textContent = state.colorTolerance;
+});
+
+document.getElementById('brush-size').addEventListener('input', e => {
+  state.brushSize = parseInt(e.target.value);
+  document.getElementById('brush-size-value').textContent = state.brushSize;
+});
+
+// ─────────────────────── OBJECTS LIST ─────────────────────────
+function renderObjectsList() {
+  const list = document.getElementById('objects-list');
+  document.getElementById('obj-count').textContent = state.objects.length;
+  
+  list.innerHTML = state.objects.map(obj => `
+    <div class="obj-item">
+      <div class="obj-icon">${obj.type === 'radar' ? '📷' : '🚦'}</div>
+      <div class="obj-info">
+        <div class="obj-name">${obj.type === 'radar' ? 'Радар' : 'Светофор'}</div>
+        <div class="obj-meta">X: ${obj.x}, Y: ${obj.y}${obj.speedLimit ? ` | ${obj.speedLimit} км/ч` : ''}</div>
+      </div>
+      <button class="obj-del" data-id="${obj.id}">Удалить</button>
+    </div>
+  `).join('');
+  
+  list.querySelectorAll('.obj-del').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.objects = state.objects.filter(o => o.id !== btn.dataset.id);
+      save();
+      renderObjectsList();
+      redraw();
     });
   });
 }
 
-// ─────────────────────── ADD / EDIT POINT ─────────────────────
-document.getElementById('save-pt-btn').addEventListener('click', () => {
-  const name  = document.getElementById('pt-name').value.trim();
-  const catId = document.getElementById('pt-cat').value;
-  const price = parseInt(document.getElementById('pt-price').value) || 500;
-  const x     = document.getElementById('pt-x').value !== '' ? parseInt(document.getElementById('pt-x').value) : undefined;
-  const y     = document.getElementById('pt-y').value !== '' ? parseInt(document.getElementById('pt-y').value) : undefined;
-
-  if (!name) { alert('Введите название точки'); return; }
-
-  if (state.editingPointId) {
-    const idx = state.points.findIndex(p => p.id === state.editingPointId);
-    if (idx !== -1) state.points[idx] = { ...state.points[idx], name, categoryId: catId, defaultPrice: price, x, y };
-  } else {
-    state.points.push({ id: 'pt_' + Date.now(), name, categoryId: catId, defaultPrice: price, x, y });
-  }
-
-  // Reset form
-  document.getElementById('pt-name').value  = '';
-  document.getElementById('pt-price').value = '500';
-  document.getElementById('pt-x').value     = '';
-  document.getElementById('pt-y').value     = '';
-  document.getElementById('form-title').textContent = 'Новая точка';
-  document.getElementById('cancel-pt-btn').style.display = 'none';
-  state.editingPointId  = null;
-  state.selectedPointId = null;
-
-  save(); renderAll(); setActiveTab('points');
+// ─────────────────────── CALIBRATION ──────────────────────────
+document.getElementById('save-calibration-btn').addEventListener('click', () => {
+  state.pixelsPerMeter = parseFloat(document.getElementById('pixels-per-meter').value) || 10;
+  state.pricePerKm = parseInt(document.getElementById('price-per-km').value) || 15;
+  state.minPrice = parseInt(document.getElementById('min-price').value) || 100;
+  state.boardingPrice = parseInt(document.getElementById('boarding-price').value) || 50;
+  state.jsonbinId = document.getElementById('jsonbin-id').value.trim();
+  state.jsonbinKey = document.getElementById('jsonbin-key').value.trim();
+  save();
+  alert('Настройки сохранены!');
 });
 
-document.getElementById('cancel-pt-btn').addEventListener('click', () => {
-  state.editingPointId = null; state.selectedPointId = null;
-  document.getElementById('form-title').textContent = 'Новая точка';
-  document.getElementById('cancel-pt-btn').style.display = 'none';
-  document.getElementById('pt-name').value  = '';
-  document.getElementById('pt-x').value = ''; document.getElementById('pt-y').value = '';
-  redraw(); renderPointsList();
-});
-
-// ─────────────────────── EXPORT ───────────────────────────────
-document.getElementById('export-btn').addEventListener('click', () => {
-  const data = { categories: state.categories, points: state.points };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url  = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = 'taxi_points.json'; a.click();
-  URL.revokeObjectURL(url);
-});
-
-// ─────────────────────── IMPORT ───────────────────────────────
-document.getElementById('import-btn').addEventListener('click', () => {
-  document.getElementById('import-file').click();
-});
-document.getElementById('import-file').addEventListener('change', e => {
-  const file = e.target.files[0]; if (!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    try {
-      const data = JSON.parse(ev.target.result);
-      if (confirm(`Импортировать ${data.points?.length || 0} точек и ${data.categories?.length || 0} категорий? Текущие данные будут заменены.`)) {
-        state.categories = data.categories || [];
-        state.points     = data.points || [];
-        save(); renderAll();
-      }
-    } catch(err) { alert('Ошибка чтения файла: ' + err.message); }
-  };
-  reader.readAsText(file);
-  e.target.value = '';
-});
-
-// ─────────────────────── MAP IMAGE ────────────────────────────
+// ─────────────────────── LOAD MAP ─────────────────────────────
 document.getElementById('load-map-btn').addEventListener('click', () => {
-  document.getElementById('map-image-file').click();
+  document.getElementById('map-file').click();
 });
-document.getElementById('map-image-file').addEventListener('change', e => {
-  const file = e.target.files[0]; if (!file) return;
+
+document.getElementById('map-file').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  
   const reader = new FileReader();
   reader.onload = ev => {
-    state.mapImageUrl = ev.target.result;
-    loadImageFromUrl(ev.target.result);
-    save();
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      state.mapImage = img;
+      state.roadWidth = img.width;
+      state.roadHeight = img.height;
+      state.roadMask = new Uint8Array(img.width * img.height);
+      
+      // Get image data for flood fill
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = img.width;
+      tempCanvas.height = img.height;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.drawImage(img, 0, 0);
+      state.mapImageData = tempCtx.getImageData(0, 0, img.width, img.height);
+      
+      document.getElementById('map-loaded').textContent = 'Да';
+      document.getElementById('map-hint').textContent = 'Кликните на дорогу для автовыделения';
+      redraw();
+    };
+    img.src = ev.target.result;
   };
   reader.readAsDataURL(file);
   e.target.value = '';
 });
 
-// ─────────────────────── RENDER ALL ───────────────────────────
-function renderAll() {
-  renderCatList();
-  renderPointsList();
-  redraw();
+// ─────────────────────── EXPORT ───────────────────────────────
+document.getElementById('export-road-btn').addEventListener('click', () => {
+  if (!state.roadMask || !state.mapImage) {
+    alert('Сначала загрузите карту и выделите дорогу');
+    return;
+  }
+  
+  // Create road mask as base64 PNG
+  const maskCanvas = document.createElement('canvas');
+  maskCanvas.width = state.roadWidth;
+  maskCanvas.height = state.roadHeight;
+  const maskCtx = maskCanvas.getContext('2d');
+  const imgData = maskCtx.createImageData(state.roadWidth, state.roadHeight);
+  
+  for (let i = 0; i < state.roadMask.length; i++) {
+    const v = state.roadMask[i] ? 255 : 0;
+    imgData.data[i * 4] = v;
+    imgData.data[i * 4 + 1] = v;
+    imgData.data[i * 4 + 2] = v;
+    imgData.data[i * 4 + 3] = 255;
+  }
+  maskCtx.putImageData(imgData, 0, 0);
+  
+  const exportData = {
+    version: 2,
+    roadMask: maskCanvas.toDataURL('image/png'),
+    width: state.roadWidth,
+    height: state.roadHeight,
+    objects: state.objects,
+    calibration: {
+      pixelsPerMeter: state.pixelsPerMeter,
+      pricePerKm: state.pricePerKm,
+      minPrice: state.minPrice,
+      boardingPrice: state.boardingPrice,
+    },
+    jsonbin: {
+      id: state.jsonbinId,
+      key: state.jsonbinKey,
+    },
+  };
+  
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'road_data.json';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// ─────────────────────── IMPORT ───────────────────────────────
+document.getElementById('import-data-btn').addEventListener('click', () => {
+  document.getElementById('import-file').click();
+});
+
+document.getElementById('import-file').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      
+      if (data.version === 2) {
+        // Load road mask
+        const img = new Image();
+        img.onload = () => {
+          state.roadWidth = data.width;
+          state.roadHeight = data.height;
+          state.roadMask = new Uint8Array(data.width * data.height);
+          
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = data.width;
+          tempCanvas.height = data.height;
+          const tempCtx = tempCanvas.getContext('2d');
+          tempCtx.drawImage(img, 0, 0);
+          const imgData = tempCtx.getImageData(0, 0, data.width, data.height);
+          
+          for (let i = 0; i < state.roadMask.length; i++) {
+            state.roadMask[i] = imgData.data[i * 4] > 127 ? 1 : 0;
+          }
+          
+          drawRoadOverlay();
+        };
+        img.src = data.roadMask;
+        
+        // Load objects
+        state.objects = data.objects || [];
+        
+        // Load calibration
+        if (data.calibration) {
+          state.pixelsPerMeter = data.calibration.pixelsPerMeter;
+          state.pricePerKm = data.calibration.pricePerKm;
+          state.minPrice = data.calibration.minPrice;
+          state.boardingPrice = data.calibration.boardingPrice;
+          
+          document.getElementById('pixels-per-meter').value = state.pixelsPerMeter;
+          document.getElementById('price-per-km').value = state.pricePerKm;
+          document.getElementById('min-price').value = state.minPrice;
+          document.getElementById('boarding-price').value = state.boardingPrice;
+        }
+        
+        // Load JSONBin
+        if (data.jsonbin) {
+          state.jsonbinId = data.jsonbin.id || '';
+          state.jsonbinKey = data.jsonbin.key || '';
+          document.getElementById('jsonbin-id').value = state.jsonbinId;
+          document.getElementById('jsonbin-key').value = state.jsonbinKey;
+        }
+        
+        save();
+        renderObjectsList();
+        redraw();
+        alert('Данные импортированы!');
+      } else {
+        alert('Неподдерживаемый формат файла');
+      }
+    } catch(err) {
+      alert('Ошибка чтения файла: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+// ─────────────────────── CONFIRM MODAL ────────────────────────
+let confirmCallback = null;
+
+function showConfirm(text, callback) {
+  document.getElementById('confirm-text').textContent = text;
+  document.getElementById('confirm-modal').classList.add('active');
+  confirmCallback = callback;
 }
+
+document.getElementById('confirm-ok').addEventListener('click', () => {
+  document.getElementById('confirm-modal').classList.remove('active');
+  if (confirmCallback) confirmCallback();
+  confirmCallback = null;
+});
+
+document.getElementById('confirm-cancel').addEventListener('click', () => {
+  document.getElementById('confirm-modal').classList.remove('active');
+  confirmCallback = null;
+});
 
 // ─────────────────────── INIT ─────────────────────────────────
 load();
-renderAll();
+resizeCanvases();
+renderObjectsList();
 </script>
 </body>
 </html>
