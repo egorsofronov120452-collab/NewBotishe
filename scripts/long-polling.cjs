@@ -231,6 +231,26 @@ function pad(n) { return String(n).padStart(2, '0'); }
 function rand() { return Math.floor(Math.random() * 1e9); }
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
+// Order counter for sequential IDs
+const ORDER_COUNTER_FILE = path.join(DATA_DIR, 'order_counter.json');
+function getNextOrderNumber() {
+  let data = { delivery: 0, taxi: 0 };
+  try { if (fs.existsSync(ORDER_COUNTER_FILE)) data = JSON.parse(fs.readFileSync(ORDER_COUNTER_FILE, 'utf8')); } catch {}
+  return data;
+}
+function incrementOrderNumber(type) {
+  const data = getNextOrderNumber();
+  data[type] = (data[type] || 0) + 1;
+  fs.writeFileSync(ORDER_COUNTER_FILE, JSON.stringify(data, null, 2), 'utf8');
+  return data[type];
+}
+function formatOrderNumber(num) { return String(num); }
+function getOrderNumDisplay(order, orderId) {
+  if (order && order.num) return `#${order.num}`;
+  if (orderId) return `#${orderId.slice(-6)}`;
+  return '#???';
+}
+
 // ─────────────────────────── BLACKLIST / MUTES ───────────────
 function saveBlacklist() {
   const d = {};
@@ -698,14 +718,19 @@ async function handleDeliveryDM(event) {
 
     // Create order
     const orderId = genId();
+    const orderNum = incrementOrderNumber('delivery');
+    // Calculate cost (sebestoimost)
+    const costTotal = sess.data.basket.reduce((sum, it) => sum + (it.cost || 0) * it.qty, 0);
     const order = {
       id:        orderId,
+      num:       orderNum,
       type:      'delivery',
       clientId:  uid,
       nick:      sess.data.nick,
       address:   sess.data.address,
       basket:    [...sess.data.basket],
       total:     basketTotal(sess.data.basket) - (promoResult?.discount || 0),
+      costTotal: costTotal,
       promo:     promoResult ? promoResult.promo?.code : null,
       promoDesc: promoResult ? promoResult.msg : null,
       status:    'pending',
@@ -806,7 +831,10 @@ async function showBasket(peerId, uid, sess, groupKey) {
 async function sendOrderToDispatch(order) {
   const lines = order.basket.map(it => `${it.name}${it.temp ? ' | '+it.temp : ''} | ${it.price}р. (x${it.qty})`);
   const total = order.total;
-  const text = `🆕 Новый заказ #${order.id.slice(-6)}\n\nНикнейм: ${order.nick}\nМесто: ${order.address}\nЗаказ:\n${lines.join('\n')}\nИтого: ${total}р.${order.promoDesc ? '\n'+order.promoDesc : ''}`;
+  const costTotal = order.costTotal || 0;
+  const orderNumDisplay = order.num ? `#${order.num}` : `#${order.id.slice(-6)}`;
+  const costLine = costTotal > 0 ? `\nСебестоимость: ${costTotal}р.` : '';
+  const text = `Новый заказ ${orderNumDisplay}\n\nНикнейм: ${order.nick}\nМесто: ${order.address}\nЗаказ:\n${lines.join('\n')}\nИтого: ${total}р.${costLine}${order.promoDesc ? '\n'+order.promoDesc : ''}`;
 
   const keyboard = kb([[{ label: 'Принять заказ', color: 'positive', payload: { action: 'accept_order', orderId: order.id } }]]);
 
@@ -851,12 +879,13 @@ async function checkUnacceptedOrder(orderId, type) {
 
   const ssChatId = type === 'taxi' ? CHATS.taxiSs : CHATS.ss;
   const listText = onlineCouriers.map(c => `@${c.nick} (${c.role})`).join(', ');
-  await sendMessage(ssChatId, `⚠️ Заказ #${orderId.slice(-6)} не принят за 3 минуты!\nКурьеры в сети: ${listText}\n\nПожалуйста, примите заказ.`, {}, 1);
+  const orderNum = getOrderNumDisplay(order, orderId);
+  await sendMessage(ssChatId, `Заказ ${orderNum} не принят за 3 минуты!\nКурьеры в сети: ${listText}\n\nПожалуйста, примите заказ.`, {}, 1);
 
   // Re-notify couriers
   for (const c of onlineCouriers) {
     if (c.uid) {
-      await sendMessage(c.uid, `⚠️ Заказ #${orderId.slice(-6)} ждёт принятия уже 3 минут��!`, {}, 1);
+      await sendMessage(c.uid, `Заказ ${orderNum} ждёт принятия уже 3 минуты!`, {}, 1);
     }
   }
 }
@@ -884,7 +913,9 @@ function getOnlineCouriers(type) {
 
 // ─────────────────────────── COURIER: ACCEPT & PURCHASE ───────
 async function handleCourierAcceptOrder(event, orderId) {
-  const uid     = event.from_id;
+  // user_id for message_event (callback), from_id for message_new
+  const uid     = event.user_id || event.from_id;
+  console.log(`[Bot] handleCourierAcceptOrder: uid=${uid}, orderId=${orderId}`);
   const staff   = readJSON(STAFF_FILE, {});
   const profile = staff[String(uid)];
 
@@ -916,7 +947,8 @@ async function handleCourierAcceptOrder(event, orderId) {
   aSess.data = { orderId, orderType: order.type || 'delivery' };
   storage.staffSessions.set(uid, aSess);
 
-  await sendMessage(uid, `Принятие заказа #${orderId.slice(-6)}.\n\nУкажите ваш никнейм:`, { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
+  const orderNumDisplay = order.num ? `#${order.num}` : `#${orderId.slice(-6)}`;
+  await sendMessage(uid, `Принятие заказа ${orderNumDisplay}.\n\nУкажите ваш никнейм:`, { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
 }
 
 async function buildPurchaseScreen(uid, order) {
@@ -944,7 +976,7 @@ async function buildPurchaseScreen(uid, order) {
   const simple  = toBuy.filter(it => !it.instruction || it.type === 'buy');
   const cooking = toBuy.filter(it => it.instruction && it.type !== 'buy');
 
-  let text = `Заказ #${order.id.slice(-6)} — Купить:\n`;
+  let text = `Заказ ${getOrderNumDisplay(order)} — Купить:\n`;
   if (simple.length) text += `Общее: ${simple.map(s => `${s.name} x${s.qty}`).join('; ')}\n`;
   if (cooking.length) {
     for (const c of cooking) {
@@ -974,7 +1006,7 @@ async function buildTaxiDriverScreen(uid, order) {
     : '';
   const payText = order.payment?.type === 'cash' ? 'Наличными'
     : order.payment?.type === 'phone' ? 'Счёт телефона' : 'Банковский счёт';
-  const text = `Такси #${order.id.slice(-6)}\n\nКлиент: ${order.nick}${passText}\nОткуда: ${order.from?.name || '—'}\nКуда: ${order.to?.name || '—'}\nСумма: ${order.finalPrice}р. (${payText})`;
+  const text = `Такси ${getOrderNumDisplay(order)}\n\nКлиент: ${order.nick}${passText}\nОткуда: ${order.from?.name || '—'}\nКуда: ${order.to?.name || '—'}\nСумма: ${order.finalPrice}р. (${payText})`;
 
   const buttons = [
     [{ label: 'Прибыл к клиенту', color: 'positive', payload: { action: 'courier_arrived', orderId: order.id } }],
@@ -986,7 +1018,7 @@ async function buildTaxiDriverScreen(uid, order) {
   order.driverMsgId = msgId;
 }
 
-// ─────────────────────────── STAFF: GROUP 1 DMs ───────────────
+// ─────────────────────────── STAFF: GROUP 1 DMs ────────��──────
 const STAFF_STEP = {
   NONE:           'none',
   REG_NICK:       'reg_nick',
@@ -1146,7 +1178,7 @@ async function handleGroup1DM(event) {
     return;
   }
 
-  if (text === 'Мой профиль' || text === 'профиль') {
+  if (text === 'Мой профиль' || text === 'проф��ль') {
     const cars    = (profile.vehicles || []).map(v => `  • ${v.name}${v.isOrg ? ' [орг]' : ''}${v.brandColor ? ' [фирм.]' : ''}`).join('\n');
     const orgCars = (profile.orgVehicles || []).map(v => `  • ${v.name}`).join('\n');
     const text2   = `Профиль сотрудника:\n\nНик: ${profile.nick}\nБанк. счёт: ${profile.bank}\nРоль: ${profile.role}\n\nЛичный автопарк:\n${cars || '  (нет)'}\n��вто организации:\n${orgCars || '  (нет)'}\n\nСтатистика:\n  Заказы доставки: ${profile.stats?.deliveryOrders || 0}\n  Заказы такси: ${profile.stats?.taxiOrders || 0}`;
@@ -1321,7 +1353,7 @@ async function handleAdminVehiclesSession(uid, peerId, text, event) {
     const catList = vehicles.catalog.map(v => `• ${v.name}`).join('\n') || '(нет)';
     await sendMessage(peerId,
       `Управление транспортом организации:\n\nАвто в орг. парке:\n${orgList}\n\nКаталог авто (для выбора сотрудниками):\n${catList}`,
-      { keyboard: msgKb([[{ label: 'Добавить авто в каталог' }, { label: 'Добавить авто организации' }], [{ label: 'Удалить авто из каталога' }]]) }, 1);
+      { keyboard: msgKb([[{ label: 'Добавить авто в каталог' }, { label: 'Добавить авто организации' }], [{ label: 'Удалить авто и�� каталога' }]]) }, 1);
     return true;
   }
 
@@ -2176,7 +2208,7 @@ async function handleTaxiDM(event) {
       sess.step = TAXI_STEP.ORDER_PAYMENT_SCREEN;
       storage.clientSessions.set('taxi_'+uid, sess);
       await sendMessage(peerId,
-        `Итоговая сумма (с комиссией ${Math.round(pay.commission*100)}%): ${finalPrice}р.\n\nПереведите средства на счёт ${ORG_BANK} и пришлите скриншот оплаты с /timestamp или временем над HUD.`,
+        `Итоговая сумма (с комиссией ${Math.round(pay.commission*100)}%): ${finalPrice}р.\n\nПереведите средства на ��чёт ${ORG_BANK} и пришлите скриншот оплаты с /timestamp или временем над HUD.`,
         { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 3);
       return;
     }
@@ -2217,12 +2249,14 @@ async function handleTaxiDM(event) {
     }
     if (text === 'Подтвердить') {
       const orderId = genId();
+      const orderNum = incrementOrderNumber('taxi');
       const order = {
-        id: orderId, type: 'taxi', clientId: uid,
+        id: orderId, num: orderNum, type: 'taxi', clientId: uid,
         nick: sess.data.nick,
         passengers: sess.data.passengers || [],
         from: sess.data.from, to: sess.data.to,
         basePrice: sess.data.basePrice, finalPrice: sess.data.finalPrice,
+        costTotal: 0, // taxi has no cost items
         payment: sess.data.payment,
         promo: sess.data.promo?.promo?.code || null,
         promoDesc: sess.data.promo?.msg || null,
@@ -2846,7 +2880,7 @@ async function handleChatCommand(event, groupKey) {
       targetGroupKey = 2;
       targetLabel = 'Доставка (группа 2)';
     } else if (taxiChats.includes(peerId)) {
-      // Если в чате такси — публикуем в группу такси
+      // Если в чате такси ��� публикуем в группу такси
       targetGroupId = G3_ID;
       targetGroupKey = 3;
       targetLabel = 'Такси (группа 3)';
@@ -3141,7 +3175,7 @@ async function handleCallback(event, groupKey) {
       buttons.push([{ label: 'Готово! Еду к клиенту', color: 'positive', payload: { action: 'start_deliver', orderId } }]);
     }
 
-    await editMessage(uid, order.purchaseMsgId, `Закупки (заказ #${orderId.slice(-6)}):`, { keyboard: kb(buttons) }, 1);
+    await editMessage(uid, order.purchaseMsgId, `Закупки (заказ ${getOrderNumDisplay(order, orderId)}):`, { keyboard: kb(buttons) }, 1);
     return;
   }
 
@@ -3154,7 +3188,7 @@ async function handleCallback(event, groupKey) {
     // Update dispatch message
     const ids = storage.orderMsgIds.get(orderId);
     if (ids) {
-      await editMessage(ids.chatId, ids.dispatchMsgId, `Заказ #${orderId.slice(-6)} — готовится (курьер: ${order.courierNick})`, {
+      await editMessage(ids.chatId, ids.dispatchMsgId, `Заказ ${getOrderNumDisplay(order, orderId)} — готовится (курьер: ${order.courierNick})`, {
         keyboard: kb([[{ label: 'Статус: Готовится', color: 'secondary', payload: {} }]])
       }, 1);
     }
@@ -3189,7 +3223,7 @@ async function handleCallback(event, groupKey) {
     order.status = 'arrived';
     await sendMessage(order.clientId, 'Курьер на месте!', {}, order.type === 'taxi' ? 3 : 2);
     // Show finish button to courier
-    await sendMessage(uid, `Заказ #${orderId.slice(-6)} — вы на месте.`,
+    await sendMessage(uid, `Заказ ${getOrderNumDisplay(order, orderId)} — вы на месте.`,
       { keyboard: kb([[{ label: 'Завершить заказ', color: 'positive', payload: { action: 'finish_order', orderId } }]]) }, 1);
     return;
   }
@@ -3227,7 +3261,7 @@ async function handleCallback(event, groupKey) {
       { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) },
       order.type === 'taxi' ? 3 : 2);
 
-    await sendMessage(uid, `Заказ #${orderId.slice(-6)} завершён. Молодец!`, {}, 1);
+    await sendMessage(uid, `Заказ ${getOrderNumDisplay(order, orderId)} завершён. Молодец!`, {}, 1);
     return;
   }
 

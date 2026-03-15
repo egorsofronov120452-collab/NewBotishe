@@ -51,22 +51,30 @@ export default function TaxiOrderClient() {
       .then(d => {
         setCategories(d.categories || [])
         setPoints(d.points || [])
-      })
-      .catch(() => {})
-
-    // Load map image from localStorage (set by map-editor)
-    try {
-      const raw = localStorage.getItem('taxi_map_editor_v1')
-      if (raw) {
-        const data = JSON.parse(raw)
-        if (data.mapImageUrl) {
-          const img = new Image()
+        
+        // Load map image from API response first, then fallback to localStorage
+        let mapUrl = d.mapImageUrl || ''
+        if (!mapUrl) {
+          try {
+            const raw = localStorage.getItem('taxi_map_editor_v1')
+            if (raw) {
+              const localData = JSON.parse(raw)
+              mapUrl = localData.mapImageUrl || ''
+            }
+          } catch {}
+        }
+        
+        if (mapUrl) {
+          const img = new window.Image()
           img.crossOrigin = 'anonymous'
           img.onload = () => { mapImgRef.current = img; setMapLoaded(true) }
-          img.src = data.mapImageUrl
+          img.onerror = () => { console.error('Failed to load map image'); setMapLoaded(true) }
+          img.src = mapUrl
+        } else {
+          setMapLoaded(true)
         }
-      }
-    } catch {}
+      })
+      .catch(() => { setMapLoaded(true) })
   }, [])
 
   // ── Canvas draw ─────────────────────────────────────────────
