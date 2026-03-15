@@ -3,145 +3,163 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Редактор точек такси</title>
+  <title>Редактор карты такси</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, sans-serif; background: #0f1117; color: #e2e8f0; height: 100vh; display: flex; overflow: hidden; }
 
     /* ─── Sidebar ─── */
-    #sidebar {
-      width: 320px; min-width: 320px; background: #1a1d2e; border-right: 1px solid #2d3148;
-      display: flex; flex-direction: column; overflow: hidden;
-    }
-    #sidebar-header { padding: 16px; border-bottom: 1px solid #2d3148; }
-    #sidebar-header h1 { font-size: 15px; font-weight: 700; color: #7c8cff; }
+    #sidebar { width: 300px; min-width: 300px; background: #1a1d2e; border-right: 1px solid #2d3148; display: flex; flex-direction: column; overflow: hidden; }
+    #sidebar-header { padding: 14px 16px 10px; border-bottom: 1px solid #2d3148; }
+    #sidebar-header h1 { font-size: 14px; font-weight: 700; color: #7c8cff; }
     #sidebar-header p  { font-size: 11px; color: #6b7280; margin-top: 2px; }
 
-    #sidebar-tabs { display: flex; border-bottom: 1px solid #2d3148; }
-    .tab-btn { flex: 1; padding: 10px; font-size: 12px; background: none; border: none; cursor: pointer; color: #94a3b8; transition: background .15s, color .15s; }
+    #sidebar-tabs { display: flex; border-bottom: 1px solid #2d3148; flex-shrink: 0; }
+    .tab-btn { flex: 1; padding: 9px 4px; font-size: 11px; background: none; border: none; cursor: pointer; color: #94a3b8; transition: background .15s, color .15s; }
     .tab-btn.active { color: #7c8cff; background: #1e2235; border-bottom: 2px solid #7c8cff; }
 
-    #sidebar-content { flex: 1; overflow-y: auto; padding: 12px; }
+    #sidebar-content { flex: 1; overflow-y: auto; padding: 10px 12px; }
 
-    /* ─── Form ─── */
-    .form-group { margin-bottom: 10px; }
-    label { display: block; font-size: 11px; color: #94a3b8; margin-bottom: 4px; }
-    input, select, textarea {
-      width: 100%; padding: 7px 9px; background: #0f1117; border: 1px solid #2d3148;
-      border-radius: 6px; color: #e2e8f0; font-size: 13px; outline: none;
-      transition: border-color .15s;
+    /* ─── Forms ─── */
+    .form-group { margin-bottom: 9px; }
+    label { display: block; font-size: 11px; color: #94a3b8; margin-bottom: 3px; }
+    input[type=text], input[type=number], select, textarea {
+      width: 100%; padding: 6px 8px; background: #0f1117; border: 1px solid #2d3148;
+      border-radius: 5px; color: #e2e8f0; font-size: 12px; outline: none;
     }
     input:focus, select:focus { border-color: #7c8cff; }
     select option { background: #0f1117; }
-    .hint { font-size: 10px; color: #6b7280; margin-top: 3px; }
+    .hint { font-size: 10px; color: #6b7280; margin-top: 2px; }
 
-    .btn { display: block; width: 100%; padding: 8px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: opacity .15s; }
+    .btn { display: block; width: 100%; padding: 7px; border-radius: 5px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; transition: opacity .15s; }
     .btn:hover { opacity: .85; }
-    .btn-primary { background: #7c8cff; color: #fff; }
-    .btn-success { background: #22c55e; color: #fff; }
-    .btn-danger  { background: #ef4444; color: #fff; }
+    .btn-primary   { background: #7c8cff; color: #fff; }
+    .btn-success   { background: #22c55e; color: #fff; }
+    .btn-danger    { background: #ef4444; color: #fff; }
     .btn-secondary { background: #2d3148; color: #e2e8f0; }
-    .btn + .btn { margin-top: 6px; }
+    .btn-warning   { background: #f59e0b; color: #fff; }
+    .btn + .btn    { margin-top: 5px; }
+
+    .section-title { font-size: 10px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: .05em; margin: 10px 0 5px; }
 
     /* ─── Point list ─── */
-    .point-item {
-      background: #131627; border: 1px solid #2d3148; border-radius: 8px;
-      padding: 10px; margin-bottom: 8px; cursor: pointer; transition: border-color .15s;
-    }
+    .point-item { background: #131627; border: 1px solid #2d3148; border-radius: 7px; padding: 8px; margin-bottom: 6px; cursor: pointer; }
     .point-item:hover { border-color: #7c8cff; }
     .point-item.selected { border-color: #7c8cff; background: #1a1d2e; }
-    .point-name { font-size: 13px; font-weight: 600; }
-    .point-meta { font-size: 11px; color: #6b7280; margin-top: 2px; }
-    .point-actions { display: flex; gap: 6px; margin-top: 8px; }
-    .point-actions button { flex: 1; padding: 5px; font-size: 11px; border-radius: 4px; border: none; cursor: pointer; }
+    .point-name { font-size: 12px; font-weight: 600; }
+    .point-meta { font-size: 10px; color: #6b7280; margin-top: 1px; }
+    .point-actions { display: flex; gap: 5px; margin-top: 6px; }
+    .point-actions button { flex: 1; padding: 4px; font-size: 10px; border-radius: 4px; border: none; cursor: pointer; }
     .btn-edit-small { background: #2d3148; color: #e2e8f0; }
     .btn-del-small  { background: #7f1d1d; color: #fca5a5; }
 
-    /* ─── Category badges ─── */
-    .cat-badge {
-      display: inline-block; padding: 2px 8px; border-radius: 12px;
-      font-size: 10px; font-weight: 600; margin-right: 4px; margin-bottom: 4px;
-      cursor: pointer; border: 1px solid transparent; transition: all .15s;
-    }
+    .cat-badge { display: inline-block; padding: 2px 7px; border-radius: 12px; font-size: 10px; font-weight: 600; margin: 0 3px 4px 0; cursor: pointer; border: 1px solid transparent; }
     .cat-badge.active { border-color: #7c8cff; }
 
-    /* ─── Canvas area ─── */
+    .cat-item { display: flex; align-items: center; justify-content: space-between; background: #131627; border: 1px solid #2d3148; border-radius: 5px; padding: 6px 8px; margin-bottom: 5px; }
+    .cat-item-name { font-size: 12px; }
+    .cat-del-btn { background: #7f1d1d; color: #fca5a5; border: none; padding: 2px 7px; border-radius: 4px; font-size: 10px; cursor: pointer; }
+
+    /* ─── Tool palette ─── */
+    #tool-palette { display: flex; flex-direction: column; gap: 5px; padding: 10px 12px; border-bottom: 1px solid #2d3148; flex-shrink: 0; }
+    #tool-palette .tool-row { display: flex; gap: 5px; }
+    .tool-pill {
+      flex: 1; padding: 6px 4px; border-radius: 5px; border: 1px solid #2d3148;
+      background: #131627; color: #94a3b8; font-size: 11px; text-align: center; cursor: pointer;
+    }
+    .tool-pill.active { background: #2d3148; color: #7c8cff; border-color: #7c8cff; }
+    .tool-pill:hover:not(.active) { border-color: #4b5380; color: #e2e8f0; }
+
+    #brush-size-row { display: flex; align-items: center; gap: 7px; padding: 0 12px 8px; flex-shrink: 0; }
+    #brush-size-row label { font-size: 11px; color: #94a3b8; min-width: 60px; }
+    #brush-size { flex: 1; }
+    #brush-size-val { font-size: 11px; color: #e2e8f0; min-width: 24px; text-align: right; }
+
+    /* ─── Canvas ─── */
     #map-area { flex: 1; position: relative; overflow: hidden; background: #0f1117; }
     #map-canvas { display: block; cursor: crosshair; }
-    #map-hint {
-      position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,.7); padding: 6px 14px; border-radius: 20px;
-      font-size: 11px; color: #94a3b8; pointer-events: none; white-space: nowrap;
-    }
-    #zoom-controls {
-      position: absolute; top: 12px; right: 12px;
-      display: flex; flex-direction: column; gap: 4px;
-    }
-    .zoom-btn {
-      width: 32px; height: 32px; background: #1a1d2e; border: 1px solid #2d3148;
-      border-radius: 6px; color: #e2e8f0; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center;
-    }
+
+    #coords-display { position: absolute; bottom: 42px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.65); padding: 3px 10px; border-radius: 12px; font-size: 10px; color: #6b7280; pointer-events: none; }
+    #map-hint       { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.65); padding: 5px 14px; border-radius: 20px; font-size: 11px; color: #94a3b8; pointer-events: none; white-space: nowrap; }
+
+    #zoom-controls  { position: absolute; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 4px; }
+    .zoom-btn { width: 30px; height: 30px; background: #1a1d2e; border: 1px solid #2d3148; border-radius: 5px; color: #e2e8f0; font-size: 17px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .zoom-btn:hover { background: #2d3148; }
 
-    /* ─── Import/Export toolbar ─── */
-    #toolbar {
-      position: absolute; top: 12px; left: 12px;
-      display: flex; gap: 6px;
-    }
-    .tool-btn {
-      padding: 6px 12px; background: #1a1d2e; border: 1px solid #2d3148;
-      border-radius: 6px; color: #e2e8f0; font-size: 12px; cursor: pointer;
-    }
+    #toolbar { position: absolute; top: 12px; left: 12px; display: flex; gap: 5px; flex-wrap: wrap; max-width: calc(100% - 160px); }
+    .tool-btn { padding: 5px 10px; background: #1a1d2e; border: 1px solid #2d3148; border-radius: 5px; color: #e2e8f0; font-size: 11px; cursor: pointer; }
     .tool-btn:hover { background: #2d3148; }
-
-    /* ─── Map image overlay ─── */
-    #map-img-overlay {
-      position: absolute; top: 0; left: 0; pointer-events: none;
-      image-rendering: pixelated;
-    }
-
-    /* ─── Coord display ─── */
-    #coords-display {
-      position: absolute; bottom: 44px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,.6); padding: 3px 10px; border-radius: 12px;
-      font-size: 10px; color: #6b7280; pointer-events: none;
-    }
 
     /* ─── Tab panels ─── */
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
 
-    .section-title { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: .05em; margin: 12px 0 6px; }
+    /* ─── Overlay canvas for road mask ─── */
+    #road-canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
 
-    .cat-item {
-      display: flex; align-items: center; justify-content: space-between;
-      background: #131627; border: 1px solid #2d3148; border-radius: 6px;
-      padding: 7px 10px; margin-bottom: 6px;
-    }
-    .cat-item-name { font-size: 12px; }
-    .cat-del-btn { background: #7f1d1d; color: #fca5a5; border: none; padding: 2px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; }
+    /* ─── Loading overlay ─── */
+    #loading-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 100; display: none; }
+    #loading-overlay .spinner { width: 36px; height: 36px; border: 3px solid #2d3148; border-top-color: #7c8cff; border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── Object list (radars / lights) ─── */
+    .obj-item { background: #131627; border: 1px solid #2d3148; border-radius: 6px; padding: 7px 8px; margin-bottom: 5px; display: flex; align-items: center; justify-content: space-between; }
+    .obj-item-info { font-size: 11px; }
+    .obj-item-info span { color: #6b7280; font-size: 10px; }
+    .obj-del-btn { background: #7f1d1d; color: #fca5a5; border: none; padding: 2px 7px; border-radius: 4px; font-size: 10px; cursor: pointer; }
   </style>
 </head>
 <body>
 
+<div id="loading-overlay"><div class="spinner"></div></div>
+
 <!-- ─── Sidebar ─── -->
 <div id="sidebar">
   <div id="sidebar-header">
-    <h1>Редактор точек такси</h1>
-    <p>Нажмите на карту чтобы разместить точку</p>
+    <h1>Редактор карты такси</h1>
+    <p id="sidebar-sub">Загрузите фото карты и начните работу</p>
+  </div>
+
+  <!-- Tool palette -->
+  <div id="tool-palette">
+    <div class="tool-row">
+      <button class="tool-pill active" data-tool="point"   title="Ставить точки маршрута">Точки</button>
+      <button class="tool-pill"       data-tool="road"     title="Flood-fill дорог по цвету">Дороги</button>
+      <button class="tool-pill"       data-tool="brush"    title="Кисть: добавить/убрать маску дороги">Кисть</button>
+      <button class="tool-pill"       data-tool="erase"    title="Стёрка маски дорог">Стёрка</button>
+    </div>
+    <div class="tool-row">
+      <button class="tool-pill"       data-tool="radar"    title="Радар — ставится по ширине дороги">Радар</button>
+      <button class="tool-pill"       data-tool="traffic"  title="Светофор — ставится по ширине дороги">Светофор</button>
+    </div>
+  </div>
+
+  <!-- Brush size (visible for brush/erase/radar/traffic tools) -->
+  <div id="brush-size-row" style="display:none">
+    <label id="brush-size-label">Кисть:</label>
+    <input type="range" id="brush-size" min="2" max="80" value="12" />
+    <span id="brush-size-val">12</span>
+  </div>
+
+  <!-- Flood-fill tolerance (road tool) -->
+  <div id="tolerance-row" style="display:none;padding:0 12px 8px;align-items:center;gap:7px;flex-shrink:0;display:flex;">
+    <label style="font-size:11px;color:#94a3b8;min-width:72px">Допуск:</label>
+    <input type="range" id="tolerance" min="0" max="120" value="30" style="flex:1" />
+    <span id="tolerance-val" style="font-size:11px;color:#e2e8f0;min-width:28px;text-align:right">30</span>
   </div>
 
   <div id="sidebar-tabs">
     <button class="tab-btn active" data-tab="points">Точки</button>
-    <button class="tab-btn" data-tab="categories">Категории</button>
-    <button class="tab-btn" data-tab="add">Добавить</button>
+    <button class="tab-btn"       data-tab="categories">Категории</button>
+    <button class="tab-btn"       data-tab="add">Добавить</button>
+    <button class="tab-btn"       data-tab="objects">Объекты</button>
   </div>
 
   <div id="sidebar-content">
 
     <!-- Points tab -->
     <div class="tab-panel active" id="tab-points">
-      <div class="section-title">Фильтр по категории</div>
+      <div class="section-title">Фильтр</div>
       <div id="cat-filter"></div>
       <div class="section-title">Точки (<span id="pts-count">0</span>)</div>
       <div id="points-list"></div>
@@ -151,10 +169,10 @@
     <div class="tab-panel" id="tab-categories">
       <div class="section-title">Категории</div>
       <div id="cat-list"></div>
-      <div class="section-title">Добавить категорию</div>
+      <div class="section-title">Новая категория</div>
       <div class="form-group">
         <label>Название</label>
-        <input type="text" id="new-cat-name" placeholder="Авто, Гос. учреждения..." />
+        <input type="text" id="new-cat-name" placeholder="Авто, Учреждения..." />
       </div>
       <button class="btn btn-primary" id="add-cat-btn">Добавить категорию</button>
     </div>
@@ -162,14 +180,8 @@
     <!-- Add/edit point tab -->
     <div class="tab-panel" id="tab-add">
       <div class="section-title" id="form-title">Новая точка</div>
-      <div class="form-group">
-        <label>Название точки</label>
-        <input type="text" id="pt-name" placeholder="Центральный вокзал" />
-      </div>
-      <div class="form-group">
-        <label>Категория</label>
-        <select id="pt-cat"></select>
-      </div>
+      <div class="form-group"><label>Название</label><input type="text"   id="pt-name"  placeholder="Центральный вокзал" /></div>
+      <div class="form-group"><label>Категория</label><select id="pt-cat"></select></div>
       <div class="form-group">
         <label>Базовая цена (₽)</label>
         <input type="number" id="pt-price" value="500" min="0" />
@@ -177,24 +189,35 @@
       </div>
       <div class="form-group">
         <label>Координаты X, Y</label>
-        <div style="display:flex;gap:6px">
+        <div style="display:flex;gap:5px">
           <input type="number" id="pt-x" placeholder="X" />
           <input type="number" id="pt-y" placeholder="Y" />
         </div>
-        <div class="hint">Кликните на карту для автозаполнения</div>
+        <div class="hint">Клик на карте в режиме «Точки»</div>
       </div>
-      <button class="btn btn-primary" id="save-pt-btn">Сохранить точку</button>
-      <button class="btn btn-secondary" id="cancel-pt-btn" style="display:none;margin-top:6px">Отмена</button>
+      <button class="btn btn-primary"   id="save-pt-btn">Сохранить точку</button>
+      <button class="btn btn-secondary" id="cancel-pt-btn" style="display:none;margin-top:5px">Отмена</button>
     </div>
 
-  </div><!-- /sidebar-content -->
+    <!-- Objects tab (radars + traffic lights) -->
+    <div class="tab-panel" id="tab-objects">
+      <div class="section-title">Радары (<span id="radar-count">0</span>)</div>
+      <div id="radars-list"></div>
+      <div class="section-title">Светофоры (<span id="traffic-count">0</span>)</div>
+      <div id="traffic-list"></div>
+      <button class="btn btn-danger" id="clear-objects-btn" style="margin-top:8px">Удалить все объекты</button>
+    </div>
+
+  </div>
 </div>
 
 <!-- ─── Map area ─── -->
 <div id="map-area">
+  <canvas id="road-canvas"></canvas>
   <canvas id="map-canvas"></canvas>
-  <div id="map-hint">Нажмите на карту чтобы задать координаты точки</div>
+
   <div id="coords-display">X: 0, Y: 0</div>
+  <div id="map-hint">Загрузите изображение карты</div>
 
   <div id="zoom-controls">
     <button class="zoom-btn" id="zoom-in">+</button>
@@ -203,39 +226,72 @@
   </div>
 
   <div id="toolbar">
-    <button class="tool-btn" id="load-map-btn">🗺 Загрузить фото карты</button>
-    <button class="tool-btn" id="export-btn">📤 Экспорт JSON</button>
-    <button class="tool-btn" id="import-btn">📥 Импорт JSON</button>
-    <input type="file" id="import-file" accept=".json" style="display:none" />
+    <button class="tool-btn" id="load-map-btn">Загрузить карту</button>
+    <button class="tool-btn" id="export-btn">Экспорт JSON</button>
+    <button class="tool-btn" id="import-btn">Импорт JSON</button>
+    <button class="tool-btn" id="clear-roads-btn">Очистить дороги</button>
+    <input type="file" id="import-file"    accept=".json"   style="display:none" />
     <input type="file" id="map-image-file" accept="image/*" style="display:none" />
   </div>
 </div>
 
 <script>
-// ─────────────────────── STATE ────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════
 let state = {
   categories: [],
   points: [],
-  // canvas
-  zoom: 1,
-  panX: 0,
-  panY: 0,
-  mapImage: null,
-  mapImageUrl: null,
-  // interaction
+  radars:  [],     // { id, x, y, width }
+  traffics: [],    // { id, x, y, width }
+
+  zoom: 1, panX: 0, panY: 0,
+  mapImage: null, mapImageUrl: null,
+
+  // Road mask: stored as pixel data on offscreen canvas
+  roadMask: null,   // OffscreenCanvas or regular canvas
+  roadCtx: null,
+
+  // Interaction
   selectedPointId: null,
   editingPointId: null,
   filterCat: null,
   isPanning: false,
   lastMouse: { x: 0, y: 0 },
+
+  // Current tool: 'point' | 'road' | 'brush' | 'erase' | 'radar' | 'traffic'
+  tool: 'point',
+  brushSize: 12,
+  floodTolerance: 30,
+
+  isDrawing: false,
 };
 
-const STORAGE_KEY = 'taxi_map_editor_v1';
-const POINT_COLORS = ['#7c8cff','#22c55e','#f59e0b','#ef4444','#06b6d4','#a855f7','#ec4899','#14b8a6'];
+const STORAGE_KEY    = 'taxi_map_editor_v2';
+const POINT_COLORS   = ['#7c8cff','#22c55e','#f59e0b','#ef4444','#06b6d4','#a855f7','#ec4899','#14b8a6'];
+const ROAD_COLOR     = 'rgba(99,190,255,0.45)';
+const RADAR_COLOR    = '#f59e0b';
+const TRAFFIC_COLOR  = '#22c55e';
 
-// ─────────────────────── PERSISTENCE ──────────────────────────
+// ═══════════════════════════════════════════════════════════════
+//  PERSISTENCE
+// ═══════════════════════════════════════════════════════════════
+function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
 function save() {
-  const data = { categories: state.categories, points: state.points, mapImageUrl: state.mapImageUrl };
+  // Serialize road mask as dataURL
+  let roadData = null;
+  if (state.roadMask) {
+    try { roadData = state.roadMask.toDataURL('image/png'); } catch(e) {}
+  }
+  const data = {
+    categories:  state.categories,
+    points:      state.points,
+    radars:      state.radars,
+    traffics:    state.traffics,
+    mapImageUrl: state.mapImageUrl,
+    roadData,
+  };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
@@ -245,40 +301,77 @@ function load() {
     if (!raw) return;
     const data = JSON.parse(raw);
     state.categories = data.categories || [];
-    state.points = data.points || [];
-    if (data.mapImageUrl) {
-      loadImageFromUrl(data.mapImageUrl);
-    }
+    state.points     = data.points     || [];
+    state.radars     = data.radars     || [];
+    state.traffics   = data.traffics   || [];
+    if (data.mapImageUrl) loadImageFromUrl(data.mapImageUrl);
+    if (data.roadData)    loadRoadMaskFromUrl(data.roadData);
   } catch(e) {}
 }
 
 function loadImageFromUrl(url) {
   const img = new Image();
-  img.onload = () => { state.mapImage = img; state.mapImageUrl = url; redraw(); };
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    state.mapImage = img;
+    state.mapImageUrl = url;
+    ensureRoadMask();
+    redraw();
+  };
   img.src = url;
 }
 
-// ─────────────────────── CANVAS SETUP ─────────────────────────
-const canvas = document.getElementById('map-canvas');
-const ctx    = canvas.getContext('2d');
+function loadRoadMaskFromUrl(url) {
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    ensureRoadMask();
+    state.roadCtx.clearRect(0, 0, state.roadMask.width, state.roadMask.height);
+    state.roadCtx.drawImage(img, 0, 0);
+    redraw();
+  };
+  img.src = url;
+}
+
+function ensureRoadMask() {
+  if (!state.mapImage) return;
+  const w = state.mapImage.width;
+  const h = state.mapImage.height;
+  if (state.roadMask && state.roadMask.width === w && state.roadMask.height === h) return;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  state.roadMask = c;
+  state.roadCtx  = c.getContext('2d');
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CANVAS SETUP
+// ═══════════════════════════════════════════════════════════════
+const canvas    = document.getElementById('map-canvas');
+const ctx       = canvas.getContext('2d');
+const roadCanvas = document.getElementById('road-canvas');
+const roadOverlayCtx = roadCanvas.getContext('2d');
 
 function resizeCanvas() {
   const area = document.getElementById('map-area');
-  canvas.width  = area.clientWidth;
-  canvas.height = area.clientHeight;
+  const w = area.clientWidth;
+  const h = area.clientHeight;
+  canvas.width  = w; canvas.height  = h;
+  roadCanvas.width = w; roadCanvas.height = h;
   redraw();
 }
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-// ─────────────────────── DRAWING ──────────────────────────────
-function worldToScreen(wx, wy) {
-  return { x: wx * state.zoom + state.panX, y: wy * state.zoom + state.panY };
-}
-function screenToWorld(sx, sy) {
-  return { x: (sx - state.panX) / state.zoom, y: (sy - state.panY) / state.zoom };
-}
+// ═══════════════════════════════════════════════════════════════
+//  COORDINATE TRANSFORMS
+// ═══════════════════════════════════════════════════════════════
+function w2s(wx, wy) { return { x: wx * state.zoom + state.panX, y: wy * state.zoom + state.panY }; }
+function s2w(sx, sy) { return { x: (sx - state.panX) / state.zoom, y: (sy - state.panY) / state.zoom }; }
 
+// ═══════════════════════════════════════════════════════════════
+//  DRAWING
+// ═══════════════════════════════════════════════════════════════
 function getCatColor(catId) {
   const idx = state.categories.findIndex(c => c.id === catId);
   return POINT_COLORS[idx % POINT_COLORS.length] || '#7c8cff';
@@ -286,76 +379,282 @@ function getCatColor(catId) {
 
 function redraw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Background grid
   ctx.fillStyle = '#0f1117';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   drawGrid();
 
-  // Map image
   if (state.mapImage) {
-    const { x, y } = worldToScreen(0, 0);
+    const { x, y } = w2s(0, 0);
     ctx.globalAlpha = 0.85;
     ctx.drawImage(state.mapImage, x, y, state.mapImage.width * state.zoom, state.mapImage.height * state.zoom);
     ctx.globalAlpha = 1;
   }
 
-  // Draw points
+  // Road mask overlay
+  roadOverlayCtx.clearRect(0, 0, roadCanvas.width, roadCanvas.height);
+  if (state.roadMask) {
+    const { x, y } = w2s(0, 0);
+    roadOverlayCtx.globalAlpha = 0.45;
+    roadOverlayCtx.drawImage(state.roadMask, x, y, state.roadMask.width * state.zoom, state.roadMask.height * state.zoom);
+    roadOverlayCtx.globalAlpha = 1;
+  }
+
+  // Radars
+  for (const r of state.radars) {
+    drawRadar(r);
+  }
+  // Traffic lights
+  for (const t of state.traffics) {
+    drawTrafficLight(t);
+  }
+  // Points
   const visible = state.filterCat
     ? state.points.filter(p => p.categoryId === state.filterCat)
     : state.points;
-
   for (const pt of visible) {
     if (pt.x === undefined || pt.y === undefined) continue;
-    const { x, y } = worldToScreen(pt.x, pt.y);
-    const color = getCatColor(pt.categoryId);
-    const isSelected = pt.id === state.selectedPointId;
-
-    // Shadow
-    ctx.shadowColor = color;
-    ctx.shadowBlur  = isSelected ? 12 : 4;
-
-    // Circle
-    ctx.beginPath();
-    ctx.arc(x, y, isSelected ? 10 : 7, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.shadowBlur = 0;
-
-    // Border
-    ctx.beginPath();
-    ctx.arc(x, y, isSelected ? 10 : 7, 0, Math.PI * 2);
-    ctx.strokeStyle = isSelected ? '#fff' : 'rgba(255,255,255,0.4)';
-    ctx.lineWidth   = isSelected ? 2 : 1;
-    ctx.stroke();
-
-    // Label
-    ctx.font = isSelected ? 'bold 12px system-ui' : '11px system-ui';
-    ctx.fillStyle = '#fff';
-    ctx.textAlign = 'center';
-    ctx.shadowColor = '#000';
-    ctx.shadowBlur  = 4;
-    ctx.fillText(pt.name, x, y - 14);
-    ctx.shadowBlur  = 0;
+    drawPoint(pt);
   }
 }
 
 function drawGrid() {
   const step = 50 * state.zoom;
   if (step < 8) return;
-  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.03)';
   ctx.lineWidth = 1;
-  const startX = state.panX % step;
-  const startY = state.panY % step;
-  for (let x = startX; x < canvas.width; x += step) {
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
-  }
-  for (let y = startY; y < canvas.height; y += step) {
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
-  }
+  const sx = state.panX % step, sy = state.panY % step;
+  for (let x = sx; x < canvas.width; x += step) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke(); }
+  for (let y = sy; y < canvas.height; y += step) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke(); }
 }
 
-// ─────────────────────── INTERACTION ──────────────────────────
+function drawPoint(pt) {
+  const { x, y } = w2s(pt.x, pt.y);
+  const color = getCatColor(pt.categoryId);
+  const isSel = pt.id === state.selectedPointId;
+  const r = isSel ? 10 : 7;
+
+  ctx.shadowColor = color; ctx.shadowBlur = isSel ? 12 : 4;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2);
+  ctx.fillStyle = color; ctx.fill(); ctx.shadowBlur = 0;
+
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2);
+  ctx.strokeStyle = isSel ? '#fff' : 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = isSel ? 2 : 1; ctx.stroke();
+
+  ctx.font = isSel ? 'bold 12px system-ui' : '11px system-ui';
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+  ctx.shadowColor = '#000'; ctx.shadowBlur = 4;
+  ctx.fillText(pt.name, x, y - 14); ctx.shadowBlur = 0;
+}
+
+function drawRadar(r) {
+  const { x, y } = w2s(r.x, r.y);
+  const w2 = (r.width || 20) * state.zoom / 2;
+  const h  = w2 * 0.6;
+
+  ctx.save();
+  ctx.fillStyle = '#1a0a00';
+  ctx.strokeStyle = RADAR_COLOR;
+  ctx.lineWidth = 2;
+  ctx.shadowColor = RADAR_COLOR; ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.roundRect(x - w2, y - h, w2 * 2, h * 2, 4);
+  ctx.fill(); ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Icon: triangle antenna
+  ctx.strokeStyle = RADAR_COLOR; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x, y - h * 0.4);
+  ctx.lineTo(x - w2 * 0.35, y + h * 0.5);
+  ctx.lineTo(x + w2 * 0.35, y + h * 0.5);
+  ctx.closePath(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x, y - h * 0.4); ctx.lineTo(x, y - h * 0.8); ctx.stroke();
+
+  ctx.font = `bold ${Math.max(8, 10 * state.zoom)}px system-ui`;
+  ctx.fillStyle = RADAR_COLOR; ctx.textAlign = 'center';
+  ctx.fillText('РДР', x, y + h + 10);
+  ctx.restore();
+}
+
+function drawTrafficLight(t) {
+  const { x, y } = w2s(t.x, t.y);
+  const w2 = (t.width || 16) * state.zoom / 2;
+  const h  = w2 * 1.8;
+
+  ctx.save();
+  ctx.fillStyle = '#001a00';
+  ctx.strokeStyle = TRAFFIC_COLOR;
+  ctx.lineWidth = 2;
+  ctx.shadowColor = TRAFFIC_COLOR; ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.roundRect(x - w2, y - h, w2 * 2, h * 2, 4);
+  ctx.fill(); ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Three circles
+  const cr = Math.max(3, w2 * 0.45);
+  const lightsY = [y - h * 0.55, y, y + h * 0.55];
+  const lightColors = ['#ef4444', '#f59e0b', '#22c55e'];
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath(); ctx.arc(x, lightsY[i], cr, 0, Math.PI*2);
+    ctx.fillStyle = lightColors[i]; ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 0.5; ctx.stroke();
+  }
+
+  ctx.font = `bold ${Math.max(8, 9 * state.zoom)}px system-ui`;
+  ctx.fillStyle = TRAFFIC_COLOR; ctx.textAlign = 'center';
+  ctx.fillText('СВТ', x, y + h + 10);
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  FLOOD FILL (roads)
+// ═══════════════════════════════════════════════════════════════
+function colorDiff(r1,g1,b1, r2,g2,b2) {
+  return Math.abs(r1-r2) + Math.abs(g1-g2) + Math.abs(b1-b2);
+}
+
+/**
+ * Flood-fill from (worldX, worldY) on the map image.
+ * Paints matching pixels onto road mask canvas in cyan.
+ */
+function floodFillRoads(worldX, worldY, tolerance) {
+  if (!state.mapImage) return;
+  ensureRoadMask();
+
+  const imgW = state.mapImage.width;
+  const imgH = state.mapImage.height;
+
+  const px = Math.round(worldX);
+  const py = Math.round(worldY);
+  if (px < 0 || py < 0 || px >= imgW || py >= imgH) return;
+
+  // Read pixel from the map image into a temp canvas
+  const tmpCanvas = document.createElement('canvas');
+  tmpCanvas.width = imgW; tmpCanvas.height = imgH;
+  const tmpCtx = tmpCanvas.getContext('2d');
+  tmpCtx.drawImage(state.mapImage, 0, 0);
+  const imgData = tmpCtx.getImageData(0, 0, imgW, imgH);
+  const pix = imgData.data;
+
+  // Also get existing mask to avoid re-filling
+  const maskData = state.roadCtx.getImageData(0, 0, imgW, imgH);
+  const maskPix  = maskData.data;
+
+  const idx = (py * imgW + px) * 4;
+  const sr = pix[idx], sg = pix[idx+1], sb = pix[idx+2];
+
+  // BFS
+  const visited = new Uint8Array(imgW * imgH);
+  const queue = [];
+  const enqueue = (x, y) => {
+    const i = y * imgW + x;
+    if (x < 0 || y < 0 || x >= imgW || y >= imgH) return;
+    if (visited[i]) return;
+    visited[i] = 1;
+    const pi = i * 4;
+    if (colorDiff(pix[pi], pix[pi+1], pix[pi+2], sr, sg, sb) > tolerance) return;
+    queue.push(x, y);
+  };
+
+  enqueue(px, py);
+  let head = 0;
+  const MAX_PIXELS = 4_000_000;
+
+  while (head < queue.length && head / 2 < MAX_PIXELS) {
+    const x = queue[head++];
+    const y = queue[head++];
+    const mi = (y * imgW + x) * 4;
+    // Paint mask pixel cyan semi-transparent
+    maskPix[mi]   = 99;
+    maskPix[mi+1] = 190;
+    maskPix[mi+2] = 255;
+    maskPix[mi+3] = 180;
+
+    enqueue(x+1, y); enqueue(x-1, y);
+    enqueue(x, y+1); enqueue(x, y-1);
+  }
+
+  state.roadCtx.putImageData(maskData, 0, 0);
+  redraw();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  ROAD WIDTH MEASUREMENT (BFS scan from center outwards)
+// ═══════════════════════════════════════════════════════════════
+function measureRoadWidthAt(worldX, worldY) {
+  if (!state.roadMask) return 20;
+  const imgW = state.roadMask.width;
+  const imgH = state.roadMask.height;
+  const px = Math.round(worldX);
+  const py = Math.round(worldY);
+  if (px < 0 || py < 0 || px >= imgW || py >= imgH) return 20;
+
+  const mData = state.roadCtx.getImageData(0, 0, imgW, imgH).data;
+  const isMask = (x, y) => {
+    if (x < 0 || y < 0 || x >= imgW || y >= imgH) return false;
+    return mData[(y * imgW + x) * 4 + 3] > 60;
+  };
+
+  if (!isMask(px, py)) return 20;
+
+  // Measure in 8 directions, take min opposite pair
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
+  const dists = dirs.map(([dx, dy]) => {
+    let d = 0;
+    while (d < 200) {
+      d++;
+      if (!isMask(px + dx*d, py + dy*d)) break;
+    }
+    return d;
+  });
+
+  // Take minimum of opposite pairs (horizontal, vertical, diagonals)
+  const widths = [
+    dists[0] + dists[1],
+    dists[2] + dists[3],
+    Math.round((dists[4] + dists[6]) * 0.7),
+    Math.round((dists[5] + dists[7]) * 0.7),
+  ];
+  return Math.max(8, Math.min(...widths));
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  BRUSH PAINT / ERASE
+// ═══════════════════════════════════════════════════════════════
+function brushPaint(worldX, worldY, size, erase) {
+  ensureRoadMask();
+  const { roadCtx } = state;
+  const s = size;
+  if (erase) {
+    roadCtx.globalCompositeOperation = 'destination-out';
+    roadCtx.fillStyle = 'rgba(0,0,0,1)';
+  } else {
+    roadCtx.globalCompositeOperation = 'source-over';
+    roadCtx.fillStyle = 'rgba(99,190,255,0.7)';
+  }
+  roadCtx.beginPath();
+  roadCtx.arc(worldX, worldY, s / 2, 0, Math.PI * 2);
+  roadCtx.fill();
+  roadCtx.globalCompositeOperation = 'source-over';
+  redraw();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  MOUSE INTERACTION
+// ═══════════════════════════════════════════════════════════════
+function hitTest(sx, sy) {
+  for (const pt of [...state.points].reverse()) {
+    if (pt.x === undefined) continue;
+    const { x, y } = w2s(pt.x, pt.y);
+    if (Math.hypot(sx-x, sy-y) <= 12) return pt;
+  }
+  return null;
+}
+
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
 canvas.addEventListener('mousedown', e => {
   if (e.button === 1 || e.button === 2) {
     state.isPanning = true; state.lastMouse = { x: e.clientX, y: e.clientY }; return;
@@ -363,29 +662,47 @@ canvas.addEventListener('mousedown', e => {
   const rect = canvas.getBoundingClientRect();
   const sx = e.clientX - rect.left;
   const sy = e.clientY - rect.top;
+  const world = s2w(sx, sy);
 
-  // Check hit on existing point
-  const hit = hitTest(sx, sy);
-  if (hit) {
-    state.selectedPointId = hit.id;
-    document.getElementById('pt-x').value = Math.round(hit.x);
-    document.getElementById('pt-y').value = Math.round(hit.y);
-    document.getElementById('pt-name').value = hit.name;
-    document.getElementById('pt-price').value = hit.defaultPrice || 500;
-    document.getElementById('pt-cat').value = hit.categoryId || '';
-    state.editingPointId = hit.id;
-    document.getElementById('form-title').textContent = 'Редактировать точку';
-    document.getElementById('cancel-pt-btn').style.display = '';
+  if (state.tool === 'point') {
+    const hit = hitTest(sx, sy);
+    if (hit) {
+      state.selectedPointId = hit.id;
+      state.editingPointId  = hit.id;
+      document.getElementById('pt-x').value     = Math.round(hit.x);
+      document.getElementById('pt-y').value     = Math.round(hit.y);
+      document.getElementById('pt-name').value  = hit.name;
+      document.getElementById('pt-price').value = hit.defaultPrice || 500;
+      document.getElementById('pt-cat').value   = hit.categoryId || '';
+      document.getElementById('form-title').textContent = 'Редактировать точку';
+      document.getElementById('cancel-pt-btn').style.display = '';
+      setActiveTab('add'); redraw(); renderPointsList(); return;
+    }
+    document.getElementById('pt-x').value = Math.round(world.x);
+    document.getElementById('pt-y').value = Math.round(world.y);
     setActiveTab('add');
-    redraw(); renderPointsList(); return;
-  }
 
-  // Place pending coords
-  const { x, y } = screenToWorld(sx, sy);
-  document.getElementById('pt-x').value = Math.round(x);
-  document.getElementById('pt-y').value = Math.round(y);
-  setActiveTab('add');
-  redraw();
+  } else if (state.tool === 'road') {
+    showLoading(true);
+    setTimeout(() => {
+      floodFillRoads(world.x, world.y, state.floodTolerance);
+      save(); showLoading(false);
+    }, 10);
+
+  } else if (state.tool === 'brush' || state.tool === 'erase') {
+    state.isDrawing = true;
+    brushPaint(world.x, world.y, state.brushSize, state.tool === 'erase');
+
+  } else if (state.tool === 'radar') {
+    const width = measureRoadWidthAt(world.x, world.y);
+    state.radars.push({ id: genId(), x: Math.round(world.x), y: Math.round(world.y), width });
+    save(); redraw(); renderObjects();
+
+  } else if (state.tool === 'traffic') {
+    const width = measureRoadWidthAt(world.x, world.y);
+    state.traffics.push({ id: genId(), x: Math.round(world.x), y: Math.round(world.y), width });
+    save(); redraw(); renderObjects();
+  }
 });
 
 canvas.addEventListener('mousemove', e => {
@@ -396,57 +713,105 @@ canvas.addEventListener('mousemove', e => {
     redraw(); return;
   }
   const rect = canvas.getBoundingClientRect();
-  const w = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
-  document.getElementById('coords-display').textContent = `X: ${Math.round(w.x)}, Y: ${Math.round(w.y)}`;
+  const world = s2w(e.clientX - rect.left, e.clientY - rect.top);
+  document.getElementById('coords-display').textContent = `X: ${Math.round(world.x)}, Y: ${Math.round(world.y)}`;
+
+  if (state.isDrawing && (state.tool === 'brush' || state.tool === 'erase')) {
+    brushPaint(world.x, world.y, state.brushSize, state.tool === 'erase');
+  }
 });
 
-canvas.addEventListener('mouseup', () => { state.isPanning = false; });
-canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('mouseup', () => {
+  state.isPanning = false;
+  if (state.isDrawing) { state.isDrawing = false; save(); }
+});
 
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
   const rect = canvas.getBoundingClientRect();
-  const sx = e.clientX - rect.left;
-  const sy = e.clientY - rect.top;
-  const factor = e.deltaY < 0 ? 1.1 : 0.9;
-  state.panX = sx - (sx - state.panX) * factor;
-  state.panY = sy - (sy - state.panY) * factor;
-  state.zoom = Math.max(0.1, Math.min(8, state.zoom * factor));
+  const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+  const f = e.deltaY < 0 ? 1.1 : 0.9;
+  state.panX = sx - (sx - state.panX) * f;
+  state.panY = sy - (sy - state.panY) * f;
+  state.zoom = Math.max(0.1, Math.min(10, state.zoom * f));
   redraw();
 }, { passive: false });
 
-function hitTest(sx, sy) {
-  for (const pt of [...state.points].reverse()) {
-    if (pt.x === undefined) continue;
-    const { x, y } = worldToScreen(pt.x, pt.y);
-    if (Math.hypot(sx - x, sy - y) <= 12) return pt;
+// Touch support (basic pan)
+let touch0 = null;
+canvas.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) { touch0 = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }
+}, { passive: true });
+canvas.addEventListener('touchmove', e => {
+  if (e.touches.length === 1 && touch0) {
+    state.panX += e.touches[0].clientX - touch0.x;
+    state.panY += e.touches[0].clientY - touch0.y;
+    touch0 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    redraw();
   }
-  return null;
+}, { passive: true });
+
+// ═══════════════════════════════════════════════════════════════
+//  ZOOM CONTROLS
+// ═══════════════════════════════════════════════════════════════
+document.getElementById('zoom-in').addEventListener('click', () => { state.zoom = Math.min(10, state.zoom * 1.2); redraw(); });
+document.getElementById('zoom-out').addEventListener('click', () => { state.zoom = Math.max(0.1, state.zoom / 1.2); redraw(); });
+document.getElementById('zoom-reset').addEventListener('click', () => { state.zoom = 1; state.panX = 0; state.panY = 0; redraw(); });
+
+// ═══════════════════════════════════════════════════════════════
+//  TOOL PALETTE
+// ═══════════════════════════════════════════════════════════════
+const brushSizeRow  = document.getElementById('brush-size-row');
+const toleranceRow  = document.getElementById('tolerance-row');
+
+function updateToolUI() {
+  document.querySelectorAll('.tool-pill').forEach(p => p.classList.toggle('active', p.dataset.tool === state.tool));
+  const showBrush = ['brush','erase'].includes(state.tool);
+  brushSizeRow.style.display = showBrush ? 'flex' : 'none';
+  toleranceRow.style.display = state.tool === 'road' ? 'flex' : 'none';
+  document.getElementById('brush-size-label').textContent = state.tool === 'erase' ? 'Стёрка:' : 'Кисть:';
+
+  const cursors = { point: 'crosshair', road: 'copy', brush: 'cell', erase: 'no-drop', radar: 'copy', traffic: 'copy' };
+  canvas.style.cursor = cursors[state.tool] || 'crosshair';
+  document.getElementById('map-hint').textContent = {
+    point:   'Кликните на карту чтобы поставить точку маршрута',
+    road:    'Кликните на пиксель цвета дороги — flood-fill заполнит все связные пиксели',
+    brush:   'Рисуйте кистью чтобы добавить маску дороги',
+    erase:   'Рисуйте чтобы стереть маску дороги',
+    radar:   'Кликните на дорогу — радар встанет по ширине дороги',
+    traffic: 'Кликните на дорогу — светофор встанет по ширине дороги',
+  }[state.tool] || '';
 }
 
-// ─────────────────────── ZOOM CONTROLS ────────────────────────
-document.getElementById('zoom-in').addEventListener('click', () => {
-  state.zoom = Math.min(8, state.zoom * 1.2); redraw();
-});
-document.getElementById('zoom-out').addEventListener('click', () => {
-  state.zoom = Math.max(0.1, state.zoom / 1.2); redraw();
-});
-document.getElementById('zoom-reset').addEventListener('click', () => {
-  state.zoom = 1; state.panX = 0; state.panY = 0; redraw();
+document.querySelectorAll('.tool-pill').forEach(p => {
+  p.addEventListener('click', () => { state.tool = p.dataset.tool; updateToolUI(); });
 });
 
-// ─────────────────────── TABS ─────────────────────────────────
-function setActiveTab(tabId) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tabId));
+const brushInput = document.getElementById('brush-size');
+brushInput.addEventListener('input', () => {
+  state.brushSize = parseInt(brushInput.value);
+  document.getElementById('brush-size-val').textContent = state.brushSize;
+});
+
+const toleranceInput = document.getElementById('tolerance');
+toleranceInput.addEventListener('input', () => {
+  state.floodTolerance = parseInt(toleranceInput.value);
+  document.getElementById('tolerance-val').textContent = state.floodTolerance;
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  TABS
+// ═══════════════════════════════════════════════════════════════
+function setActiveTab(id) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + id));
 }
-document.querySelectorAll('.tab-btn').forEach(b => {
-  b.addEventListener('click', () => setActiveTab(b.dataset.tab));
-});
+document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => setActiveTab(b.dataset.tab)));
 
-// ─────────────────────── CATEGORIES ───────────────────────────
+// ═══════════════════════════════════════════════════════════════
+//  CATEGORIES
+// ═══════════════════════════════════════════════════════════════
 function renderCatList() {
-  // Sidebar categories tab
   const list = document.getElementById('cat-list');
   list.innerHTML = '';
   for (const c of state.categories) {
@@ -454,43 +819,38 @@ function renderCatList() {
     el.className = 'cat-item';
     el.innerHTML = `<span class="cat-item-name" style="color:${getCatColor(c.id)}">${c.name}</span>
       <button class="cat-del-btn" data-id="${c.id}">Удалить</button>`;
-    list.querySelector ? list.appendChild(el) : (list.innerHTML += ''); list.appendChild(el);
+    list.appendChild(el);
   }
   list.querySelectorAll('.cat-del-btn').forEach(b => {
     b.addEventListener('click', () => {
-      const id = b.dataset.id;
-      state.categories = state.categories.filter(c => c.id !== id);
-      state.points = state.points.filter(p => p.categoryId !== id);
+      state.categories = state.categories.filter(c => c.id !== b.dataset.id);
+      state.points     = state.points.filter(p => p.categoryId !== b.dataset.id);
       save(); renderAll();
     });
   });
 
-  // Category filter (points tab)
   const filter = document.getElementById('cat-filter');
   filter.innerHTML = '';
   const allBadge = document.createElement('span');
   allBadge.className = 'cat-badge' + (!state.filterCat ? ' active' : '');
-  allBadge.style.background = '#2d3148'; allBadge.style.color = '#e2e8f0';
+  allBadge.style.cssText = 'background:#2d3148;color:#e2e8f0';
   allBadge.textContent = 'Все';
-  allBadge.addEventListener('click', () => { state.filterCat = null; renderAll(); });
+  allBadge.onclick = () => { state.filterCat = null; renderAll(); };
   filter.appendChild(allBadge);
+
   for (const c of state.categories) {
     const badge = document.createElement('span');
     badge.className = 'cat-badge' + (state.filterCat === c.id ? ' active' : '');
-    badge.style.background = getCatColor(c.id) + '33';
-    badge.style.color = getCatColor(c.id);
+    badge.style.cssText = `background:${getCatColor(c.id)}33;color:${getCatColor(c.id)}`;
     badge.textContent = c.name;
-    badge.addEventListener('click', () => { state.filterCat = c.id; renderAll(); });
+    badge.onclick = () => { state.filterCat = c.id; renderAll(); };
     filter.appendChild(badge);
   }
 
-  // Category select in add form
   const sel = document.getElementById('pt-cat');
   const prev = sel.value;
-  sel.innerHTML = '<option value="">— выберите категорию —</option>';
-  for (const c of state.categories) {
-    sel.innerHTML += `<option value="${c.id}">${c.name}</option>`;
-  }
+  sel.innerHTML = '<option value="">— выберите —</option>';
+  for (const c of state.categories) sel.innerHTML += `<option value="${c.id}">${c.name}</option>`;
   if (prev) sel.value = prev;
 }
 
@@ -502,123 +862,137 @@ document.getElementById('add-cat-btn').addEventListener('click', () => {
   save(); renderAll();
 });
 
-// ─────────────────────── POINTS LIST ──────────────────────────
+// ═══════════════════════════════════════════════════════════════
+//  POINTS LIST
+// ═══════════════════════════════════════════════════════════════
 function renderPointsList() {
   const list = document.getElementById('points-list');
-  const visible = state.filterCat
-    ? state.points.filter(p => p.categoryId === state.filterCat)
-    : state.points;
+  const visible = state.filterCat ? state.points.filter(p => p.categoryId === state.filterCat) : state.points;
   document.getElementById('pts-count').textContent = visible.length;
   list.innerHTML = '';
   for (const pt of visible) {
-    const cat = state.categories.find(c => c.id === pt.categoryId);
+    const cat   = state.categories.find(c => c.id === pt.categoryId);
     const color = getCatColor(pt.categoryId);
-    const el = document.createElement('div');
+    const el    = document.createElement('div');
     el.className = 'point-item' + (pt.id === state.selectedPointId ? ' selected' : '');
     el.innerHTML = `
       <div class="point-name" style="color:${color}">${pt.name}</div>
       <div class="point-meta">${cat ? cat.name : '—'} | ${pt.defaultPrice || 0}₽ | X:${pt.x ?? '—'} Y:${pt.y ?? '—'}</div>
       <div class="point-actions">
         <button class="btn-edit-small" data-id="${pt.id}">Изменить</button>
-        <button class="btn-del-small" data-id="${pt.id}">Удалить</button>
+        <button class="btn-del-small"  data-id="${pt.id}">Удалить</button>
       </div>`;
     list.appendChild(el);
   }
   list.querySelectorAll('.btn-edit-small').forEach(b => {
-    b.addEventListener('click', e => { e.stopPropagation(); const pt = state.points.find(p => p.id === b.dataset.id); if (!pt) return;
+    b.addEventListener('click', () => {
+      const pt = state.points.find(p => p.id === b.dataset.id);
+      if (!pt) return;
       state.selectedPointId = pt.id; state.editingPointId = pt.id;
+      document.getElementById('pt-x').value     = Math.round(pt.x ?? 0);
+      document.getElementById('pt-y').value     = Math.round(pt.y ?? 0);
       document.getElementById('pt-name').value  = pt.name;
-      document.getElementById('pt-cat').value   = pt.categoryId || '';
       document.getElementById('pt-price').value = pt.defaultPrice || 500;
-      document.getElementById('pt-x').value     = pt.x ?? '';
-      document.getElementById('pt-y').value     = pt.y ?? '';
+      document.getElementById('pt-cat').value   = pt.categoryId || '';
       document.getElementById('form-title').textContent = 'Редактировать точку';
       document.getElementById('cancel-pt-btn').style.display = '';
       setActiveTab('add'); redraw();
     });
   });
   list.querySelectorAll('.btn-del-small').forEach(b => {
-    b.addEventListener('click', e => { e.stopPropagation();
+    b.addEventListener('click', () => {
       state.points = state.points.filter(p => p.id !== b.dataset.id);
       if (state.selectedPointId === b.dataset.id) state.selectedPointId = null;
-      save(); renderAll();
+      save(); renderAll(); redraw();
     });
   });
 }
 
-// ─────────────────────── ADD / EDIT POINT ─────────────────────
+// ═══════════════════════════════════════════════════════════════
+//  SAVE / CANCEL POINT
+// ═══════════════════════════════════════════════════════════════
 document.getElementById('save-pt-btn').addEventListener('click', () => {
-  const name  = document.getElementById('pt-name').value.trim();
-  const catId = document.getElementById('pt-cat').value;
-  const price = parseInt(document.getElementById('pt-price').value) || 500;
-  const x     = document.getElementById('pt-x').value !== '' ? parseInt(document.getElementById('pt-x').value) : undefined;
-  const y     = document.getElementById('pt-y').value !== '' ? parseInt(document.getElementById('pt-y').value) : undefined;
-
-  if (!name) { alert('Введите название точки'); return; }
+  const name     = document.getElementById('pt-name').value.trim();
+  const catId    = document.getElementById('pt-cat').value;
+  const price    = parseInt(document.getElementById('pt-price').value) || 0;
+  const x        = parseFloat(document.getElementById('pt-x').value);
+  const y        = parseFloat(document.getElementById('pt-y').value);
+  if (!name || !catId) { alert('Введите название и выберите категорию.'); return; }
 
   if (state.editingPointId) {
     const idx = state.points.findIndex(p => p.id === state.editingPointId);
-    if (idx !== -1) state.points[idx] = { ...state.points[idx], name, categoryId: catId, defaultPrice: price, x, y };
+    if (idx !== -1) state.points[idx] = { ...state.points[idx], name, categoryId: catId, defaultPrice: price, x: isNaN(x) ? undefined : x, y: isNaN(y) ? undefined : y };
+    state.editingPointId = null;
+    document.getElementById('form-title').textContent = 'Новая точка';
+    document.getElementById('cancel-pt-btn').style.display = 'none';
   } else {
-    state.points.push({ id: 'pt_' + Date.now(), name, categoryId: catId, defaultPrice: price, x, y });
+    state.points.push({ id: genId(), name, categoryId: catId, defaultPrice: price, x: isNaN(x) ? undefined : x, y: isNaN(y) ? undefined : y });
   }
-
-  // Reset form
-  document.getElementById('pt-name').value  = '';
-  document.getElementById('pt-price').value = '500';
-  document.getElementById('pt-x').value     = '';
-  document.getElementById('pt-y').value     = '';
-  document.getElementById('form-title').textContent = 'Новая точка';
-  document.getElementById('cancel-pt-btn').style.display = 'none';
-  state.editingPointId  = null;
-  state.selectedPointId = null;
-
-  save(); renderAll(); setActiveTab('points');
+  document.getElementById('pt-name').value = '';
+  document.getElementById('pt-x').value    = '';
+  document.getElementById('pt-y').value    = '';
+  save(); renderAll(); redraw();
 });
 
 document.getElementById('cancel-pt-btn').addEventListener('click', () => {
-  state.editingPointId = null; state.selectedPointId = null;
+  state.editingPointId = null;
   document.getElementById('form-title').textContent = 'Новая точка';
   document.getElementById('cancel-pt-btn').style.display = 'none';
-  document.getElementById('pt-name').value  = '';
-  document.getElementById('pt-x').value = ''; document.getElementById('pt-y').value = '';
-  redraw(); renderPointsList();
 });
 
-// ─────────────────────── EXPORT ───────────────────────────────
-document.getElementById('export-btn').addEventListener('click', () => {
-  const data = { categories: state.categories, points: state.points };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url  = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = 'taxi_points.json'; a.click();
-  URL.revokeObjectURL(url);
+// ═══════════════════════════════════════════════════════════════
+//  OBJECTS LIST (radars + traffic)
+// ═══════════════════════════════════════════════════════════════
+function renderObjects() {
+  const rl = document.getElementById('radars-list');
+  const tl = document.getElementById('traffic-list');
+  document.getElementById('radar-count').textContent   = state.radars.length;
+  document.getElementById('traffic-count').textContent = state.traffics.length;
+
+  rl.innerHTML = '';
+  for (const r of state.radars) {
+    const el = document.createElement('div');
+    el.className = 'obj-item';
+    el.innerHTML = `<div class="obj-item-info" style="color:${RADAR_COLOR}">Радар <span>X:${r.x} Y:${r.y} ш:${r.width}px</span></div>
+      <button class="obj-del-btn" data-id="${r.id}" data-type="radar">Удалить</button>`;
+    rl.appendChild(el);
+  }
+  tl.innerHTML = '';
+  for (const t of state.traffics) {
+    const el = document.createElement('div');
+    el.className = 'obj-item';
+    el.innerHTML = `<div class="obj-item-info" style="color:${TRAFFIC_COLOR}">Светофор <span>X:${t.x} Y:${t.y} ш:${t.width}px</span></div>
+      <button class="obj-del-btn" data-id="${t.id}" data-type="traffic">Удалить</button>`;
+    tl.appendChild(el);
+  }
+
+  document.querySelectorAll('.obj-del-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      if (b.dataset.type === 'radar')   state.radars   = state.radars.filter(r => r.id !== b.dataset.id);
+      if (b.dataset.type === 'traffic') state.traffics = state.traffics.filter(t => t.id !== b.dataset.id);
+      save(); renderObjects(); redraw();
+    });
+  });
+}
+
+document.getElementById('clear-objects-btn').addEventListener('click', () => {
+  if (!confirm('Удалить все радары и светофоры?')) return;
+  state.radars = []; state.traffics = [];
+  save(); renderObjects(); redraw();
 });
 
-// ─────────────────────── IMPORT ───────────────────────────────
-document.getElementById('import-btn').addEventListener('click', () => {
-  document.getElementById('import-file').click();
-});
-document.getElementById('import-file').addEventListener('change', e => {
-  const file = e.target.files[0]; if (!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    try {
-      const data = JSON.parse(ev.target.result);
-      if (confirm(`Импортировать ${data.points?.length || 0} точек и ${data.categories?.length || 0} категорий? Текущие данные будут заменены.`)) {
-        state.categories = data.categories || [];
-        state.points     = data.points || [];
-        save(); renderAll();
-      }
-    } catch(err) { alert('Ошибка чтения файла: ' + err.message); }
-  };
-  reader.readAsText(file);
-  e.target.value = '';
+document.getElementById('clear-roads-btn').addEventListener('click', () => {
+  if (!confirm('Очистить всю маску дорог?')) return;
+  if (state.roadCtx && state.roadMask) {
+    state.roadCtx.clearRect(0, 0, state.roadMask.width, state.roadMask.height);
+  }
+  save(); redraw();
 });
 
-// ─────────────────────── MAP IMAGE ────────────────────────────
-document.getElementById('load-map-btn').addEventListener('click', () => {
-  document.getElementById('map-image-file').click();
-});
+// ═══════════════════════════════════════════════════════════════
+//  TOOLBAR: load map / export / import
+// ═══════════════════════════════════════════════════════════════
+document.getElementById('load-map-btn').addEventListener('click', () => document.getElementById('map-image-file').click());
 document.getElementById('map-image-file').addEventListener('change', e => {
   const file = e.target.files[0]; if (!file) return;
   const reader = new FileReader();
@@ -626,20 +1000,59 @@ document.getElementById('map-image-file').addEventListener('change', e => {
     state.mapImageUrl = ev.target.result;
     loadImageFromUrl(ev.target.result);
     save();
+    document.getElementById('sidebar-sub').textContent = file.name;
   };
   reader.readAsDataURL(file);
   e.target.value = '';
 });
 
-// ─────────────────────── RENDER ALL ───────────────────────────
-function renderAll() {
-  renderCatList();
-  renderPointsList();
-  redraw();
-}
+document.getElementById('export-btn').addEventListener('click', () => {
+  // Export only points/categories/radars/traffics (no image data) for use with bot
+  const out = {
+    categories: state.categories,
+    points:     state.points,
+    radars:     state.radars,
+    traffics:   state.traffics,
+  };
+  const a = document.createElement('a');
+  a.href = 'data:application/json,' + encodeURIComponent(JSON.stringify(out, null, 2));
+  a.download = 'taxi_points.json';
+  a.click();
+});
 
-// ─────────────────────── INIT ─────────────────────────────────
+document.getElementById('import-btn').addEventListener('click', () => document.getElementById('import-file').click());
+document.getElementById('import-file').addEventListener('change', e => {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const d = JSON.parse(ev.target.result);
+      state.categories = d.categories || [];
+      state.points     = d.points     || [];
+      state.radars     = d.radars     || [];
+      state.traffics   = d.traffics   || [];
+      save(); renderAll(); redraw();
+    } catch { alert('Невалидный JSON'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  LOADING INDICATOR
+// ═══════════════════════════════════════════════════════════════
+function showLoading(v) { document.getElementById('loading-overlay').style.display = v ? 'flex' : 'none'; }
+
+// ═══════════════════════════════════════════════════════════════
+//  RENDER ALL
+// ═══════════════════════════════════════════════════════════════
+function renderAll() { renderCatList(); renderPointsList(); renderObjects(); redraw(); }
+
+// ═══════════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════════
 load();
+updateToolUI();
 renderAll();
 </script>
 </body>
