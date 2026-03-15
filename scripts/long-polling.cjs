@@ -844,6 +844,94 @@ async function showBasket(peerId, uid, sess, groupKey) {
   }
 }
 
+// ─────────────────────────── ORDER REPORT (скрины после заказа) ─
+/**
+ * После завершения заказа просим курьера прислать скрины.
+ * Этапы (хранятся в staffSessions):
+ *   report_chat_screen  — ждём скрин переписки с клиентом
+ *   report_cash_screen  — ждём скрин пополнения счёта (только если оплата наличными)
+ */
+async function requestOrderReport(courierId, order, orderId) {
+  const sess = storage.staffSessions.get(courierId) || { step: null, data: {} };
+  sess.step = 'report_chat_screen';
+  sess.data.reportOrderId    = orderId;
+  sess.data.reportOrderNum   = getOrderNumDisplay(order, orderId);
+  sess.data.reportNeedsCash  = (order.payment?.type === 'cash');
+  sess.data.reportOrderType  = order.type || 'delivery';
+  storage.staffSessions.set(courierId, sess);
+  await sendMessage(courierId,
+    `Заказ ${sess.data.reportOrderNum} завершён.\n\nОтправьте скриншот переписки с клиентом:`,
+    { keyboard: msgKb([[{ label: 'Пропустить', color: 'secondary' }]]) }, 1);
+}
+
+/**
+ * Обрабатывает шаги отчёта в ЛС курьера (группа 1).
+ * Возвращает true если обработал.
+ */
+async function handleOrderReport(uid, peerId, text, msg) {
+  const sess = storage.staffSessions.get(uid);
+  if (!sess) return false;
+  const step = sess.step;
+
+  if (step === 'report_chat_screen') {
+    const isTaxi = sess.data.reportOrderType === 'taxi';
+    const dispatchChatId = isTaxi ? CHATS.taxiDispetcherskaya : CHATS.dispetcherskaya;
+    const courierMention = `[id${uid}|${sess.data.reportCourierNick || 'Курьер'}]`;
+    const orderNum = sess.data.reportOrderNum || '';
+
+    if (text !== 'Пропустить') {
+      const photos = (msg.attachments || []).filter(a => a.type === 'photo')
+        .map(a => `photo${a.photo.owner_id}_${a.photo.id}`);
+      if (photos.length === 0) {
+        await sendMessage(peerId, 'Отправьте скриншот (фото), или нажмите «Пропустить»:', {}, 1);
+        return true;
+      }
+      await sendMessage(dispatchChatId,
+        `Отчёт по заказу ${orderNum}\nКурьер: ${courierMention}\nСкрин переписки с клиентом:`,
+        { attachment: photos.join(',') }, 1);
+    }
+
+    if (sess.data.reportNeedsCash) {
+      sess.step = 'report_cash_screen';
+      storage.staffSessions.set(uid, sess);
+      await sendMessage(peerId,
+        `Клиент платил наличными. Отправьте скриншот пополнения счёта организации ${ORG_BANK}:`,
+        { keyboard: msgKb([[{ label: 'Пропустить', color: 'secondary' }]]) }, 1);
+    } else {
+      sess.step = null;
+      storage.staffSessions.set(uid, sess);
+      await sendMessage(peerId, 'Отчёт принят. Спасибо!', {}, 1);
+    }
+    return true;
+  }
+
+  if (step === 'report_cash_screen') {
+    const isTaxi = sess.data.reportOrderType === 'taxi';
+    const dispatchChatId = isTaxi ? CHATS.taxiDispetcherskaya : CHATS.dispetcherskaya;
+    const courierMention = `[id${uid}|${sess.data.reportCourierNick || 'Курьер'}]`;
+    const orderNum = sess.data.reportOrderNum || '';
+
+    if (text !== 'Пропустить') {
+      const photos = (msg.attachments || []).filter(a => a.type === 'photo')
+        .map(a => `photo${a.photo.owner_id}_${a.photo.id}`);
+      if (photos.length === 0) {
+        await sendMessage(peerId, 'Отправьте скриншот (фото), или нажмите «Пропустить»:', {}, 1);
+        return true;
+      }
+      await sendMessage(dispatchChatId,
+        `Отчёт по заказу ${orderNum}\nКурьер: ${courierMention}\nСкрин пополнения счёта:`,
+        { attachment: photos.join(',') }, 1);
+    }
+
+    sess.step = null;
+    storage.staffSessions.set(uid, sess);
+    await sendMessage(peerId, 'Отчёт принят. Спасибо!', {}, 1);
+    return true;
+  }
+
+  return false;
+}
+
 // ─────────────────────────── DISPATCH: SEND ORDER TO CHAT ─────
 async function sendOrderToDispatch(order) {
   const lines = order.basket.map(it => `${it.name}${it.temp ? ' | '+it.temp : ''} | ${it.price}р. (x${it.qty})`);
@@ -3362,6 +3450,12 @@ async function handleCallback(event, groupKey) {
       order.type === 'taxi' ? 3 : 2);
 
     await sendMessage(uid, `Заказ ${getOrderNumDisplay(order, orderId)} завершён. Молодец!`, {}, 1);
+    // Запрашиваем отчётные скрины у курьера
+    const repSess2 = storage.staffSessions.get(uid) || { step: null, data: {} };
+    repSess2.data = repSess2.data || {};
+    repSess2.data.reportCourierNick = order.courierNick;
+    storage.staffSessions.set(uid, repSess2);
+    await requestOrderReport(uid, order, orderId);
     return;
   }
 
@@ -3421,6 +3515,12 @@ async function handleCallback(event, groupKey) {
     }
 
     await sendMessage(uid, `Заказ ${getOrderNumDisplay(order, orderId)} завершён. Молодец!`, {}, 1);
+    // Запрашиваем отчётные скрины у курьера
+    const repSess = storage.staffSessions.get(uid) || { step: null, data: {} };
+    repSess.data = repSess.data || {};
+    repSess.data.reportCourierNick = order.courierNick;
+    storage.staffSessions.set(uid, repSess);
+    await requestOrderReport(uid, order, orderId);
     return;
   }
 
@@ -3509,6 +3609,13 @@ async function handleEvent(event, groupKey) {
         } else if (groupKey === 3) {
           await handleTaxiDM(msg);
         } else if (groupKey === 1) {
+          // Отчётные скрины после заказа — перехватываем в первую очередь
+          const repSess = storage.staffSessions.get(uid) || { step: null };
+          if (repSess.step === 'report_chat_screen' || repSess.step === 'report_cash_screen') {
+            const handled = await handleOrderReport(uid, peerId, text, msg);
+            if (handled) return;
+          }
+
           // Handle vehicle add steps first (staff)
           const sess = storage.staffSessions.get(uid) || { step: null };
           if (['staff_veh_select','staff_veh_brandcolor','staff_veh_photo','staff_org_veh_select','staff_veh_delete',
