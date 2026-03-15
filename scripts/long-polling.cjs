@@ -186,14 +186,17 @@ async function callVK(method, params = {}, groupKey = 1, useUserToken = false) {
 
 /** Send message using a specific group token */
 async function sendMessage(peerId, message, params = {}, groupKey = 1) {
+  console.log(`[Bot] sendMessage -> peer_id: ${peerId}, groupKey: ${groupKey}, msg: ${message.slice(0, 50)}...`);
   try {
-    return await callVK('messages.send', {
+    const result = await callVK('messages.send', {
       peer_id: peerId, message,
       random_id: Math.floor(Math.random() * 1e9),
       ...params,
     }, groupKey);
+    console.log(`[Bot] sendMessage OK -> peer_id: ${peerId}, msg_id: ${result}`);
+    return result;
   } catch (e) {
-    console.error('[Bot] sendMessage error:', e.message);
+    console.error(`[Bot] sendMessage ERROR -> peer_id: ${peerId}, groupKey: ${groupKey}, error: ${e.message}`);
     return null;
   }
 }
@@ -807,14 +810,31 @@ async function sendOrderToDispatch(order) {
 
   const keyboard = kb([[{ label: 'Принять заказ', color: 'positive', payload: { action: 'accept_order', orderId: order.id } }]]);
 
-  // Диспетчерская доставки принадлежит группе 2, такси — группе 3.
-  // Токен группы 1 (главная) обычно не имеет доступа к беседам других сообществ,
-  // поэтому используем токен соответствующей группы.
-  const chatId   = order.type === 'taxi' ? CHATS.taxiDispetcherskaya : CHATS.dispetcherskaya;
-  const dispGKey = order.type === 'taxi' ? 3 : 2;
-  const msgId    = await sendMessage(chatId, text, { keyboard }, dispGKey);
+  // Диспетчерская: для доставки используем группу 1 (т.к. бот группы 1 состоит в чате), для такси — группу 1
+  // Если беседа создана в сообществе 1, токен группы 1 должен иметь к ней доступ
+  const chatId = order.type === 'taxi' ? CHATS.taxiDispetcherskaya : CHATS.dispetcherskaya;
+  
+  console.log(`[Bot] sendOrderToDispatch: order=${order.id}, type=${order.type}, chatId=${chatId}`);
+  
+  if (!chatId || chatId === 0) {
+    console.error(`[Bot] sendOrderToDispatch ERROR: chatId не настроен для типа ${order.type}`);
+    return;
+  }
+
+  // Пробуем сначала через токен группы 1 (главный бот), если не получится — через токен группы 2/3
+  let msgId = await sendMessage(chatId, text, { keyboard }, 1);
+  
+  if (!msgId) {
+    console.log(`[Bot] sendOrderToDispatch: retry with groupKey ${order.type === 'taxi' ? 3 : 2}`);
+    const fallbackGKey = order.type === 'taxi' ? 3 : 2;
+    msgId = await sendMessage(chatId, text, { keyboard }, fallbackGKey);
+  }
+  
   if (msgId) {
     storage.orderMsgIds.set(order.id, { dispatchMsgId: msgId, chatId });
+    console.log(`[Bot] sendOrderToDispatch OK: order=${order.id}, msgId=${msgId}`);
+  } else {
+    console.error(`[Bot] sendOrderToDispatch FAILED: order=${order.id}, chatId=${chatId}`);
   }
 
   // Auto-check after 3 minutes if not accepted
@@ -2796,23 +2816,69 @@ async function handleChatCommand(event, groupKey) {
   const isRs   = role === 'rs';
   const isSs   = role === 'ss' || isRs;
 
-  // !пост
+  // !пост [доставка|такси] — публикация на стену группы
+  // Если аргумент не указан, определяем по текущему чату
   if (cmd === '!пост') {
     if (!isSs) { await sendMessage(peerId, 'Команда доступна только РС и СС', {}, groupKey); return true; }
     if (!reply) { await sendMessage(peerId, 'Ответьте на сообщение для публикации', {}, groupKey); return true; }
+    
+    // Определяем целевую группу
+    let targetArg = (parts[1] || '').toLowerCase();
+    let targetGroupId = null;
+    let targetGroupKey = null;
+    let targetLabel = '';
+    
+    // Автоопределение по чатам
+    const deliveryChats = [CHATS.dispetcherskaya, CHATS.ss, CHATS.fludilka, CHATS.uchebny].filter(Boolean);
+    const taxiChats = [CHATS.taxiDispetcherskaya, CHATS.taxiSs, CHATS.taxiFludilka, CHATS.taxiUchebny].filter(Boolean);
+    
+    if (targetArg === 'доставка' || targetArg === 'delivery') {
+      targetGroupId = G2_ID;
+      targetGroupKey = 2;
+      targetLabel = 'Доставка (группа 2)';
+    } else if (targetArg === 'такси' || targetArg === 'taxi') {
+      targetGroupId = G3_ID;
+      targetGroupKey = 3;
+      targetLabel = 'Такси (группа 3)';
+    } else if (deliveryChats.includes(peerId)) {
+      // Если в чате доставки — публикуем в группу доставки
+      targetGroupId = G2_ID;
+      targetGroupKey = 2;
+      targetLabel = 'Доставка (группа 2)';
+    } else if (taxiChats.includes(peerId)) {
+      // Если в чате такси — публикуем в группу такси
+      targetGroupId = G3_ID;
+      targetGroupKey = 3;
+      targetLabel = 'Такси (группа 3)';
+    } else {
+      // По умолчанию — доставка
+      targetGroupId = G2_ID;
+      targetGroupKey = 2;
+      targetLabel = 'Доставка (группа 2)';
+    }
+    
+    if (!targetGroupId || targetGroupId === '0') {
+      await sendMessage(peerId, `Группа не настроена (${targetLabel})`, {}, groupKey);
+      return true;
+    }
+    
     try {
       const msg = reply; const postText = msg.text || ''; const attachments = [];
       for (const att of msg.attachments || []) {
         if (att.type === 'photo' && att.photo) {
-          const pid = await reuploadPhotoToGroup(att.photo, G2_ID, 2);
+          const pid = await reuploadPhotoToGroup(att.photo, targetGroupId, targetGroupKey);
           if (pid) attachments.push(pid);
         } else if (att.type === 'video' && att.video) {
           let vid = `video${att.video.owner_id}_${att.video.id}`; if (att.video.access_key) vid += `_${att.video.access_key}`; attachments.push(vid);
         }
       }
-      await callVK('wall.post', { owner_id: `-${G2_ID}`, message: postText, attachments: attachments.join(','), from_group: 1 }, 2);
-      await sendMessage(peerId, 'Пост опубликован в группе 2', {}, groupKey);
-    } catch (e) { await sendMessage(peerId, 'Ошибка публикации: ' + e.message, {}, groupKey); }
+      console.log(`[Bot] !пост -> group: ${targetGroupId}, attachments: ${attachments.length}`);
+      await callVK('wall.post', { owner_id: `-${targetGroupId}`, message: postText, attachments: attachments.join(','), from_group: 1 }, targetGroupKey);
+      await sendMessage(peerId, `Пост опубликован: ${targetLabel}`, {}, groupKey);
+    } catch (e) { 
+      console.error(`[Bot] !пост ERROR: ${e.message}`);
+      await sendMessage(peerId, 'Ошибка публикации: ' + e.message, {}, groupKey); 
+    }
     return true;
   }
 
@@ -3034,6 +3100,8 @@ async function handleCallback(event, groupKey) {
   catch(_) { payload = {}; }
 
   const action = payload.action;
+  const chatLabel = peerId > 2000000000 ? `chat_id: ${peerIdToChatId(peerId)}` : `dm: ${peerId}`;
+  console.log(`[Bot][G${groupKey}] callback <- peer_id: ${peerId} (${chatLabel}), user: ${uid}, action: ${action}`);
 
   // Accept order
   if (action === 'accept_order') {
@@ -3217,6 +3285,10 @@ async function handleEvent(event, groupKey) {
       const uid    = msg.from_id;
       const text   = (msg.text || '').trim();
 
+      // Log every incoming message with chat ID
+      const chatLabel = peerId > 2000000000 ? `chat_id: ${peerIdToChatId(peerId)}` : `dm_user: ${peerId}`;
+      console.log(`[Bot][G${groupKey}] message_new <- peer_id: ${peerId} (${chatLabel}), from: ${uid}, text: "${text.slice(0, 50)}"`);
+
       // Ignore bot messages
       if (uid <= 0) return;
 
@@ -3264,6 +3336,9 @@ async function handleEvent(event, groupKey) {
     }
 
     if (type === 'message_event') {
+      const cbPeerId = obj.peer_id;
+      const cbLabel = cbPeerId > 2000000000 ? `chat_id: ${peerIdToChatId(cbPeerId)}` : `dm: ${cbPeerId}`;
+      console.log(`[Bot][G${groupKey}] message_event <- peer_id: ${cbPeerId} (${cbLabel}), user: ${obj.user_id}`);
       await handleCallback(obj, groupKey);
     }
 
