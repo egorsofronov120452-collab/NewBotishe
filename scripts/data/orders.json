@@ -1,0 +1,31 @@
+{
+  "delivery": [
+    {
+      "id": "mmrarpetznhv",
+      "type": "delivery",
+      "clientId": 700970214,
+      "nick": "Egoriy_Bobryshev",
+      "address": "Здание РЖД",
+      "basket": [
+        {
+          "id": "mmraquvr4wcu",
+          "name": "Мука",
+          "price": 400,
+          "cost": 300,
+          "temp": "",
+          "categoryId": "mmrapy0mxuw0",
+          "subItems": [],
+          "instruction": null,
+          "photoId": null,
+          "qty": 1
+        }
+      ],
+      "total": 400,
+      "promo": null,
+      "promoDesc": null,
+      "status": "pending",
+      "createdAt": 1773551497062
+    }
+  ],
+  "taxi": []
+}
