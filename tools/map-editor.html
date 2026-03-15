@@ -569,20 +569,20 @@ function ensureRoadMask() {
 }
 
 function floodFillRoads(worldX, worldY, tolerance) {
-  if (!state.mapImage) return;
+  if (!state.mapImage) { showLoading(false); return; }
   ensureRoadMask();
-  
+
   const imgW = state.mapImage.width;
   const imgH = state.mapImage.height;
   const px = Math.round(worldX);
   const py = Math.round(worldY);
-  
+
   if (px < 0 || py < 0 || px >= imgW || py >= imgH) {
     showLoading(false);
     return;
   }
-  
-  // Read source image pixels
+
+  // Read source image pixels into a temp canvas
   const tmpCanvas = document.createElement('canvas');
   tmpCanvas.width = imgW;
   tmpCanvas.height = imgH;
@@ -590,59 +590,66 @@ function floodFillRoads(worldX, worldY, tolerance) {
   tmpCtx.drawImage(state.mapImage, 0, 0);
   const imgData = tmpCtx.getImageData(0, 0, imgW, imgH);
   const pix = imgData.data;
-  
+
   // Get current mask
   const maskData = state.roadCtx.getImageData(0, 0, imgW, imgH);
   const maskPix = maskData.data;
-  
-  // Get target color
-  const idx = (py * imgW + px) * 4;
-  const sr = pix[idx], sg = pix[idx + 1], sb = pix[idx + 2];
-  
+
+  // Seed colour
+  const idx0 = (py * imgW + px) * 4;
+  const sr = pix[idx0], sg = pix[idx0 + 1], sb = pix[idx0 + 2];
+
+  // Use a plain JS array as queue — avoids Int32Array overflow on large images
   const visited = new Uint8Array(imgW * imgH);
-  const queue = new Int32Array(imgW * imgH * 2);
-  let head = 0, tail = 0;
-  
-  const colorDiff = (i) => {
-    return Math.abs(pix[i] - sr) + Math.abs(pix[i + 1] - sg) + Math.abs(pix[i + 2] - sb);
-  };
-  
-  const enqueue = (x, y) => {
+  const queueX = [];
+  const queueY = [];
+
+  const colorDiff = (i) =>
+    Math.abs(pix[i] - sr) + Math.abs(pix[i + 1] - sg) + Math.abs(pix[i + 2] - sb);
+
+  function tryEnqueue(x, y) {
     if (x < 0 || y < 0 || x >= imgW || y >= imgH) return;
     const i = y * imgW + x;
     if (visited[i]) return;
     visited[i] = 1;
     if (colorDiff(i * 4) > tolerance) return;
-    queue[tail++] = x;
-    queue[tail++] = y;
-  };
-  
-  enqueue(px, py);
-  
-  const CHUNK = 80000;
-  const MAX = 8000000;
+    queueX.push(x);
+    queueY.push(y);
+  }
+
+  tryEnqueue(px, py);
+
+  // Process in async chunks so the browser stays responsive
+  const CHUNK = 40000; // pixels per frame
+  let head = 0;
   let processed = 0;
-  
+
   function step() {
-    const limit = Math.min(tail, head + CHUNK * 2);
-    while (head < limit && processed < MAX) {
-      const x = queue[head++];
-      const y = queue[head++];
+    const end = Math.min(queueX.length, head + CHUNK);
+
+    while (head < end) {
+      const x = queueX[head];
+      const y = queueY[head];
+      head++;
+
       const mi = (y * imgW + x) * 4;
-      maskPix[mi] = 99;
+      maskPix[mi]     = 99;
       maskPix[mi + 1] = 190;
       maskPix[mi + 2] = 255;
       maskPix[mi + 3] = 200;
       processed++;
-      enqueue(x + 1, y);
-      enqueue(x - 1, y);
-      enqueue(x, y + 1);
-      enqueue(x, y - 1);
+
+      tryEnqueue(x + 1, y);
+      tryEnqueue(x - 1, y);
+      tryEnqueue(x, y + 1);
+      tryEnqueue(x, y - 1);
     }
-    
-    if (head < tail && processed < MAX) {
+
+    if (head < queueX.length) {
+      // More pixels to process — yield to browser then continue
       requestAnimationFrame(step);
     } else {
+      // Done — commit mask, redraw, save
       state.roadCtx.putImageData(maskData, 0, 0);
       redraw();
       save();
@@ -650,7 +657,7 @@ function floodFillRoads(worldX, worldY, tolerance) {
       showStatus(`Заполнено ${processed.toLocaleString()} пикселей`);
     }
   }
-  
+
   requestAnimationFrame(step);
 }
 
@@ -906,7 +913,7 @@ document.getElementById('oneway-length').addEventListener('input', e => {
 
 // ═══════════════════════════════════════════════════════════════
 //  RENDER LISTS
-// ═══════════════════════════════════════════════════════════════
+// ════════════���══════════════════════════════════════════════════
 function renderLists() {
   // One-ways
   document.getElementById('oneway-count').textContent = state.oneWays.length;
