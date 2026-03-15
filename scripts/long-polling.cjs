@@ -1299,7 +1299,7 @@ async function handleGroup1DM(event) {
     if (adminResult4) return;
   }
 
-  // Default — нер���спознанный текст, показываем меню
+  // Default — не�����спознанный текст, показываем меню
   await showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role);
 }
 
@@ -1376,6 +1376,8 @@ async function handleAdminVehiclesSession(uid, peerId, text, event) {
       if (ph) photoId = `photo${ph.photo.owner_id}_${ph.photo.id}`;
     }
     const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
+    if (!Array.isArray(vehicles.catalog)) vehicles.catalog = [];
+    if (!Array.isArray(vehicles.org_vehicles)) vehicles.org_vehicles = [];
     vehicles.catalog.push({ id: genId(), name: sess.data.vehName, photoId });
     writeJSON(VEHICLES_FILE, vehicles);
     sess.step = null; storage.adminSessions.set(uid, sess);
@@ -1396,6 +1398,8 @@ async function handleAdminVehiclesSession(uid, peerId, text, event) {
   if (step === 'admin_org_veh_select') {
     if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); return true; }
     const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
+    if (!Array.isArray(vehicles.catalog)) vehicles.catalog = [];
+    if (!Array.isArray(vehicles.org_vehicles)) vehicles.org_vehicles = [];
     const veh = vehicles.catalog.find(v => v.name === text);
     if (!veh) return true;
     vehicles.org_vehicles.push({ ...veh });
@@ -1418,6 +1422,8 @@ async function handleAdminVehiclesSession(uid, peerId, text, event) {
   if (step === 'admin_veh_del') {
     if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', {}, 1); return true; }
     const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
+    if (!Array.isArray(vehicles.catalog)) vehicles.catalog = [];
+    if (!Array.isArray(vehicles.org_vehicles)) vehicles.org_vehicles = [];
     const before = vehicles.catalog.length;
     vehicles.catalog = vehicles.catalog.filter(v => v.name !== text);
     if (vehicles.catalog.length === before) { await sendMessage(peerId, 'Авто не найдено.', {}, 1); sess.step = null; storage.adminSessions.set(uid, sess); return true; }
@@ -1448,6 +1454,7 @@ async function handleStaffVehicleAdd(uid, peerId, text, event) {
   if (step === 'staff_veh_select') {
     if (text === 'Отмена') { sess.step = null; storage.staffSessions.set(uid, sess); return true; }
     const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
+    if (!Array.isArray(vehicles.catalog)) vehicles.catalog = [];
     const veh = vehicles.catalog.find(v => v.name === text);
     if (!veh) return true;
     sess.data.vehName = veh.name;
@@ -1478,6 +1485,7 @@ async function handleStaffVehicleAdd(uid, peerId, text, event) {
 
   if (text === 'Взять авто организации') {
     const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
+    if (!Array.isArray(vehicles.org_vehicles)) vehicles.org_vehicles = [];
     if (!vehicles.org_vehicles.length) { await sendMessage(peerId, 'В орг. парке нет авто.', {}, 1); return true; }
     sess.step = 'staff_org_veh_select'; storage.staffSessions.set(uid, sess);
     const rows = vehicles.org_vehicles.map(v => [{ label: v.name }]);
@@ -1488,6 +1496,7 @@ async function handleStaffVehicleAdd(uid, peerId, text, event) {
   if (step === 'staff_org_veh_select') {
     if (text === 'Отмена') { sess.step = null; storage.staffSessions.set(uid, sess); return true; }
     const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
+    if (!Array.isArray(vehicles.org_vehicles)) vehicles.org_vehicles = [];
     const veh = vehicles.org_vehicles.find(v => v.name === text);
     if (!veh) return true;
     if (!profile.orgVehicles) profile.orgVehicles = [];
@@ -1893,7 +1902,7 @@ async function handleAdminTaxiPoints(uid, peerId, text, event) {
 
   if (text === 'Добавить категорию точек') {
     sess.step = 'tp_add_cat'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите название категории (например: Центр, Аэропорт, Жилые районы):', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
+    await sendMessage(peerId, 'Введите название категории (например: Центр, Аэропорт, Жилые ра��оны):', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
     return true;
   }
   if (step === 'tp_add_cat') {
@@ -2205,7 +2214,7 @@ async function handleTaxiDM(event) {
     if (text !== 'Пропустить') {
       const pr = applyPromo(text, 'taxi', [{ name: 'Поездка', price: sess.data.basePrice, qty: 1 }]);
       if (!pr.ok) {
-        await sendMessage(peerId, pr.msg + '\nВведите другой промокод или «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить' }]]) }, 3);
+        await sendMessage(peerId, pr.msg + '\nВведите другой промокод или ��Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить' }]]) }, 3);
         return;
       }
       sess.data.promo = pr;
@@ -3040,7 +3049,7 @@ async function handleChatCommand(event, groupKey) {
     const kickedCount = kickedFrom.length;
     const scopeLabel  = scopeArg === 'все' ? 'всех чатов' : scopeArg === 'доставка' ? 'чатов доставки' : scopeArg === 'такси' ? 'чатов такси' : 'чата';
     const resultMsg   = kickedCount > 0
-      ? `${targetName} исключён из ${kickedCount} ${scopeLabel}. Причина: ${reasonArg}`
+      ? `${targetName} и��ключён из ${kickedCount} ${scopeLabel}. Причина: ${reasonArg}`
       : `Не удалось исключить ${targetName} (возможно, не участник или нет прав)`;
 
     await sendMessage(peerId, resultMsg, {}, groupKey);
