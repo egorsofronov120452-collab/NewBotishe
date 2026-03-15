@@ -268,45 +268,91 @@ let state = {
 };
 
 const STORAGE_KEY    = 'taxi_map_editor_v2';
+const IDB_DB         = 'taxi_map_editor_db';
+const IDB_STORE      = 'blobs';
 const POINT_COLORS   = ['#7c8cff','#22c55e','#f59e0b','#ef4444','#06b6d4','#a855f7','#ec4899','#14b8a6'];
 const ROAD_COLOR     = 'rgba(99,190,255,0.45)';
 const RADAR_COLOR    = '#f59e0b';
 const TRAFFIC_COLOR  = '#22c55e';
 
 // ═══════════════════════════════════════════════════════════════
-//  PERSISTENCE
+//  INDEXEDDB  (for large blobs: road mask + map image)
 // ═══════════════════════════════════════════════════════════════
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
+let _idb = null;
+function openIDB() {
+  if (_idb) return Promise.resolve(_idb);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_DB, 1);
+    req.onupgradeneeded = e => e.target.result.createObjectStore(IDB_STORE);
+    req.onsuccess = e => { _idb = e.target.result; resolve(_idb); };
+    req.onerror   = () => reject(req.error);
+  });
+}
+function idbPut(key, value) {
+  return openIDB().then(db => new Promise((res, rej) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(value, key);
+    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+  })).catch(() => {});
+}
+function idbGet(key) {
+  return openIDB().then(db => new Promise((res, rej) => {
+    const tx  = db.transaction(IDB_STORE, 'readonly');
+    const req = tx.objectStore(IDB_STORE).get(key);
+    req.onsuccess = () => res(req.result);
+    req.onerror   = () => rej(req.error);
+  })).catch(() => null);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PERSISTENCE  (small JSON to localStorage, blobs to IDB)
+// ═══════════════════════════════════════════════════════════════
 function save() {
-  // Serialize road mask as dataURL
-  let roadData = null;
-  if (state.roadMask) {
-    try { roadData = state.roadMask.toDataURL('image/png'); } catch(e) {}
-  }
+  // Save small JSON (no image data) to localStorage
   const data = {
     categories:  state.categories,
     points:      state.points,
     radars:      state.radars,
     traffics:    state.traffics,
-    mapImageUrl: state.mapImageUrl,
-    roadData,
   };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(e) {}
+
+  // Save road mask blob to IndexedDB asynchronously
+  if (state.roadMask) {
+    state.roadMask.toBlob(blob => { if (blob) idbPut('roadMask', blob); }, 'image/png');
+  }
+  // Save map image URL to IDB (can be large dataURL from file load)
+  if (state.mapImageUrl) {
+    idbPut('mapImageUrl', state.mapImageUrl);
+  }
 }
 
-function load() {
+async function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const data = JSON.parse(raw);
-    state.categories = data.categories || [];
-    state.points     = data.points     || [];
-    state.radars     = data.radars     || [];
-    state.traffics   = data.traffics   || [];
-    if (data.mapImageUrl) loadImageFromUrl(data.mapImageUrl);
-    if (data.roadData)    loadRoadMaskFromUrl(data.roadData);
+    if (raw) {
+      const data = JSON.parse(raw);
+      state.categories = data.categories || [];
+      state.points     = data.points     || [];
+      state.radars     = data.radars     || [];
+      state.traffics   = data.traffics   || [];
+    }
   } catch(e) {}
+
+  // Load map image from IDB
+  const mapUrl = await idbGet('mapImageUrl');
+  if (mapUrl) loadImageFromUrl(mapUrl);
+
+  // Load road mask blob from IDB
+  const roadBlob = await idbGet('roadMask');
+  if (roadBlob) {
+    const url = URL.createObjectURL(roadBlob);
+    loadRoadMaskFromUrl(url);
+  }
+
+  renderAll();
 }
 
 function loadImageFromUrl(url) {
@@ -517,7 +563,7 @@ function colorDiff(r1,g1,b1, r2,g2,b2) {
 
 /**
  * Flood-fill from (worldX, worldY) on the map image.
- * Paints matching pixels onto road mask canvas in cyan.
+ * Runs in async chunks (CHUNK_SIZE pixels per frame) so the UI stays responsive.
  */
 function floodFillRoads(worldX, worldY, tolerance) {
   if (!state.mapImage) return;
@@ -528,9 +574,9 @@ function floodFillRoads(worldX, worldY, tolerance) {
 
   const px = Math.round(worldX);
   const py = Math.round(worldY);
-  if (px < 0 || py < 0 || px >= imgW || py >= imgH) return;
+  if (px < 0 || py < 0 || px >= imgW || py >= imgH) { showLoading(false); return; }
 
-  // Read pixel from the map image into a temp canvas
+  // Read source image pixels into a temp canvas
   const tmpCanvas = document.createElement('canvas');
   tmpCanvas.width = imgW; tmpCanvas.height = imgH;
   const tmpCtx = tmpCanvas.getContext('2d');
@@ -538,46 +584,63 @@ function floodFillRoads(worldX, worldY, tolerance) {
   const imgData = tmpCtx.getImageData(0, 0, imgW, imgH);
   const pix = imgData.data;
 
-  // Also get existing mask to avoid re-filling
+  // Get current mask
   const maskData = state.roadCtx.getImageData(0, 0, imgW, imgH);
   const maskPix  = maskData.data;
 
   const idx = (py * imgW + px) * 4;
   const sr = pix[idx], sg = pix[idx+1], sb = pix[idx+2];
 
-  // BFS
   const visited = new Uint8Array(imgW * imgH);
-  const queue = [];
+  // Use Int32Array as a ring-buffer queue for speed
+  const queue = new Int32Array(imgW * imgH * 2);
+  let head = 0, tail = 0;
+
   const enqueue = (x, y) => {
-    const i = y * imgW + x;
     if (x < 0 || y < 0 || x >= imgW || y >= imgH) return;
+    const i = y * imgW + x;
     if (visited[i]) return;
     visited[i] = 1;
     const pi = i * 4;
     if (colorDiff(pix[pi], pix[pi+1], pix[pi+2], sr, sg, sb) > tolerance) return;
-    queue.push(x, y);
+    queue[tail++] = x;
+    queue[tail++] = y;
   };
 
   enqueue(px, py);
-  let head = 0;
-  const MAX_PIXELS = 4_000_000;
 
-  while (head < queue.length && head / 2 < MAX_PIXELS) {
-    const x = queue[head++];
-    const y = queue[head++];
-    const mi = (y * imgW + x) * 4;
-    // Paint mask pixel cyan semi-transparent
-    maskPix[mi]   = 99;
-    maskPix[mi+1] = 190;
-    maskPix[mi+2] = 255;
-    maskPix[mi+3] = 180;
+  const CHUNK = 60_000; // pixels per frame
+  const MAX_PIXELS = 6_000_000;
+  let processed = 0;
 
-    enqueue(x+1, y); enqueue(x-1, y);
-    enqueue(x, y+1); enqueue(x, y-1);
+  function step() {
+    const limit = Math.min(tail, head + CHUNK * 2);
+    while (head < limit && processed < MAX_PIXELS) {
+      const x = queue[head++];
+      const y = queue[head++];
+      const mi = (y * imgW + x) * 4;
+      maskPix[mi]   = 99;
+      maskPix[mi+1] = 190;
+      maskPix[mi+2] = 255;
+      maskPix[mi+3] = 180;
+      processed++;
+      enqueue(x+1, y); enqueue(x-1, y);
+      enqueue(x, y+1); enqueue(x, y-1);
+    }
+
+    if (head < tail && processed < MAX_PIXELS) {
+      // More work to do — yield to browser for one frame
+      requestAnimationFrame(step);
+    } else {
+      // Done — commit and close loading
+      state.roadCtx.putImageData(maskData, 0, 0);
+      redraw();
+      save();
+      showLoading(false);
+    }
   }
 
-  state.roadCtx.putImageData(maskData, 0, 0);
-  redraw();
+  requestAnimationFrame(step);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -684,10 +747,8 @@ canvas.addEventListener('mousedown', e => {
 
   } else if (state.tool === 'road') {
     showLoading(true);
-    setTimeout(() => {
-      floodFillRoads(world.x, world.y, state.floodTolerance);
-      save(); showLoading(false);
-    }, 10);
+    // Yield one frame so the loading overlay renders before heavy BFS starts
+    requestAnimationFrame(() => floodFillRoads(world.x, world.y, state.floodTolerance));
 
   } else if (state.tool === 'brush' || state.tool === 'erase') {
     state.isDrawing = true;
@@ -864,7 +925,7 @@ document.getElementById('add-cat-btn').addEventListener('click', () => {
 
 // ═══════════════════════════════════════════════════════════════
 //  POINTS LIST
-// ═══════════════════════════════════════════════════════════════
+// ═════════��═════════════════════════════════════════════════════
 function renderPointsList() {
   const list = document.getElementById('points-list');
   const visible = state.filterCat ? state.points.filter(p => p.categoryId === state.filterCat) : state.points;
@@ -1051,9 +1112,9 @@ function renderAll() { renderCatList(); renderPointsList(); renderObjects(); red
 // ═══════════════════════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════════════════════
-load();
 updateToolUI();
-renderAll();
+renderAll();  // immediate render with empty state
+load();       // async — calls renderAll() again after IDB data loads
 </script>
 </body>
 </html>

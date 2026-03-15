@@ -6,67 +6,73 @@ import { useSearchParams } from 'next/navigation'
 interface TaxiPoint {
   id: string
   name: string
-  categoryId: string
+  categoryId?: string
   defaultPrice?: number
   x?: number
   y?: number
 }
 
-interface TaxiCategory {
-  id: string
-  name: string
-}
-
 type Step = 'from' | 'to'
+
+// ── IndexedDB helpers (mirror of map-editor) ──────────────────
+const IDB_DB    = 'taxi_map_editor_db'
+const IDB_STORE = 'blobs'
+
+function openIDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_DB, 1)
+    req.onupgradeneeded = (e) => (e.target as IDBOpenDBRequest).result.createObjectStore(IDB_STORE)
+    req.onsuccess = (e) => resolve((e.target as IDBOpenDBRequest).result)
+    req.onerror   = () => reject(req.error)
+  })
+}
+function idbGet(key: string): Promise<unknown> {
+  return openIDB().then(db => new Promise((res, rej) => {
+    const tx  = db.transaction(IDB_STORE, 'readonly')
+    const req = tx.objectStore(IDB_STORE).get(key)
+    req.onsuccess = () => res(req.result)
+    req.onerror   = () => rej(req.error)
+  })).catch(() => null)
+}
 
 const POINT_COLORS = ['#7c8cff', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#a855f7', '#ec4899', '#14b8a6']
 
 export default function TaxiOrderClient() {
   const searchParams = useSearchParams()
-  const token  = searchParams.get('token') || ''
+  const token    = searchParams.get('token') || ''
   const initStep = (searchParams.get('step') === 'to' ? 'to' : 'from') as Step
 
-  const canvasRef  = useRef<HTMLCanvasElement>(null)
-  const mapImgRef  = useRef<HTMLImageElement | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const mapImgRef = useRef<HTMLImageElement | null>(null)
 
-  const [categories,  setCategories]  = useState<TaxiCategory[]>([])
-  const [points,      setPoints]      = useState<TaxiPoint[]>([])
-  const [filterCat,   setFilterCat]   = useState<string | null>(null)
-  const [step,        setStep]        = useState<Step>(initStep)
-  const [fromPoint,   setFromPoint]   = useState<TaxiPoint | null>(null)
-  const [toPoint,     setToPoint]     = useState<TaxiPoint | null>(null)
-  const [selected,    setSelected]    = useState<TaxiPoint | null>(null)
-  const [status,      setStatus]      = useState<'idle' | 'sending' | 'done' | 'error'>('idle')
-  const [errorMsg,    setErrorMsg]    = useState('')
-  const [mapLoaded,   setMapLoaded]   = useState(false)
+  const [points,    setPoints]    = useState<TaxiPoint[]>([])
+  const [step,      setStep]      = useState<Step>(initStep)
+  const [fromPoint, setFromPoint] = useState<TaxiPoint | null>(null)
+  const [toPoint,   setToPoint]   = useState<TaxiPoint | null>(null)
+  const [selected,  setSelected]  = useState<TaxiPoint | null>(null)
+  const [status,    setStatus]    = useState<'idle' | 'sending' | 'done' | 'error'>('idle')
+  const [errorMsg,  setErrorMsg]  = useState('')
+  const [mapLoaded, setMapLoaded] = useState(false)
 
-  // pan/zoom state in a ref to avoid re-render on every mouse move
   const viewRef = useRef({ zoom: 1, panX: 0, panY: 0 })
   const panRef  = useRef({ active: false, lastX: 0, lastY: 0 })
 
-  // ── Load points ─────────────────────────────────────────────
+  // ── Load points + map image from IndexedDB ───────────────────
   useEffect(() => {
     fetch('/api/taxi-points')
       .then(r => r.json())
-      .then(d => {
-        setCategories(d.categories || [])
-        setPoints(d.points || [])
-      })
+      .then(d => setPoints(d.points || []))
       .catch(() => {})
 
-    // Load map image from localStorage (set by map-editor)
-    try {
-      const raw = localStorage.getItem('taxi_map_editor_v1')
-      if (raw) {
-        const data = JSON.parse(raw)
-        if (data.mapImageUrl) {
-          const img = new Image()
-          img.crossOrigin = 'anonymous'
-          img.onload = () => { mapImgRef.current = img; setMapLoaded(true) }
-          img.src = data.mapImageUrl
-        }
+    // Load map image from IndexedDB (written by map-editor.html)
+    idbGet('mapImageUrl').then(url => {
+      if (typeof url === 'string' && url) {
+        const img = new Image()
+        img.crossOrigin = 'anonymous'
+        img.onload = () => { mapImgRef.current = img; setMapLoaded(true) }
+        img.src = url
       }
-    } catch {}
+    })
   }, [])
 
   // ── Canvas draw ─────────────────────────────────────────────
@@ -103,14 +109,12 @@ export default function TaxiOrderClient() {
       ctx.globalAlpha = 1
     }
 
-    // Draw points
-    const visible = filterCat ? points.filter(p => p.categoryId === filterCat) : points
-    for (const pt of visible) {
+    // Draw all points
+    for (const pt of points) {
       if (pt.x === undefined || pt.y === undefined) continue
       const sx = pt.x * zoom + panX
       const sy = pt.y * zoom + panY
-      const catIdx = categories.findIndex(c => c.id === pt.categoryId)
-      const color = POINT_COLORS[catIdx % POINT_COLORS.length] || '#7c8cff'
+      const color = '#7c8cff'
 
       const isFrom     = fromPoint?.id === pt.id
       const isTo       = toPoint?.id === pt.id
@@ -151,7 +155,7 @@ export default function TaxiOrderClient() {
         ctx.shadowBlur = 0
       }
     }
-  }, [points, categories, filterCat, fromPoint, toPoint, selected, mapLoaded]) // eslint-disable-line
+  }, [points, fromPoint, toPoint, selected, mapLoaded]) // eslint-disable-line
 
   useEffect(() => { draw() }, [draw])
 
@@ -244,8 +248,6 @@ export default function TaxiOrderClient() {
       setErrorMsg(String(e))
     }
   }
-
-  const visibleCats = categories.filter(c => points.some(p => p.categoryId === c.id))
 
   // ── Render ───────────────────────────────────────────────────
   return (
