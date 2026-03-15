@@ -554,7 +554,7 @@ async function handleDeliveryDM(event) {
     return;
   }
 
-  // ── Заказать ──────────────────────────────────────────────
+  // ── Заказать ────────���─────────────────────────────────────
   if (text === 'Заказать') {
     sess.step = DEL_STEP.ORDER_CAT;
     sess.data.basket = [];
@@ -1299,7 +1299,7 @@ async function handleGroup1DM(event) {
     if (adminResult4) return;
   }
 
-  // Default — нер��спознанный текст, показываем меню
+  // Default — нер���спознанный текст, показываем меню
   await showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role);
 }
 
@@ -1333,7 +1333,7 @@ async function showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role) {
 // ─────────────────────────── VEHICLE MANAGEMENT ───────────────
 async function showVehicleMenu(uid, peerId, profile) {
   const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
-  const text = `Автоп����р��:\n\nЛичные авто:\n${(profile.vehicles || []).map(v => `• ${v.name}${v.brandColor ? ' [фирм.]' : ''}`).join('\n') || '(нет)'}\n\nАвто организации:\n${(profile.orgVehicles || []).map(v => `• ${v.name}`).join('\n') || '(нет)'}`;
+  const text = `Авт��п����р��:\n\nЛичные авто:\n${(profile.vehicles || []).map(v => `• ${v.name}${v.brandColor ? ' [фирм.]' : ''}`).join('\n') || '(нет)'}\n\nАвто организации:\n${(profile.orgVehicles || []).map(v => `• ${v.name}`).join('\n') || '(нет)'}`;
   await sendMessage(peerId, text, {
     keyboard: msgKb([
       [{ label: 'Добавить личное авто' }, { label: 'Взять авто организации' }],
@@ -1349,6 +1349,8 @@ async function handleAdminVehiclesSession(uid, peerId, text, event) {
 
   if (text === 'Управление авто') {
     const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
+    if (!Array.isArray(vehicles.org_vehicles)) vehicles.org_vehicles = [];
+    if (!Array.isArray(vehicles.catalog)) vehicles.catalog = [];
     const orgList = vehicles.org_vehicles.map(v => `• ${v.name}`).join('\n') || '(нет)';
     const catList = vehicles.catalog.map(v => `• ${v.name}`).join('\n') || '(нет)';
     await sendMessage(peerId,
@@ -1383,6 +1385,7 @@ async function handleAdminVehiclesSession(uid, peerId, text, event) {
 
   if (text === 'Добавить авто организации') {
     const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
+    if (!Array.isArray(vehicles.catalog)) vehicles.catalog = [];
     if (!vehicles.catalog.length) { await sendMessage(peerId, 'Сначала добавьте авто в каталог.', {}, 1); return true; }
     sess.step = 'admin_org_veh_select'; storage.adminSessions.set(uid, sess);
     const rows = vehicles.catalog.map(v => [{ label: v.name }]);
@@ -1404,6 +1407,7 @@ async function handleAdminVehiclesSession(uid, peerId, text, event) {
 
   if (text === 'Удалить авто из каталога') {
     const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
+    if (!Array.isArray(vehicles.catalog)) vehicles.catalog = [];
     if (!vehicles.catalog.length) { await sendMessage(peerId, 'Каталог пуст.', {}, 1); return true; }
     sess.step = 'admin_veh_del'; storage.adminSessions.set(uid, sess);
     const rows = vehicles.catalog.map(v => [{ label: v.name }]);
@@ -2862,7 +2866,7 @@ async function handleChatCommand(event, groupKey) {
     return true;
   }
 
-  // !стата — работает в любом чате с правильным токеном группы
+  // !стата — работа��т в любом чате с правильным токеном группы
   if (cmd === '!стата') {
     await handleStatsCommand(event, groupKey);
     return true;
