@@ -1,0 +1,17 @@
+{
+  "700970214": {
+    "uid": 700970214,
+    "nick": "Egoriy_Bobryshev",
+    "bank": "542928",
+    "role": "rs",
+    "groups": [],
+    "vehicles": [],
+    "orgVehicles": [],
+    "stats": {
+      "deliveryOrders": 0,
+      "taxiOrders": 0
+    },
+    "createdAt": 1773161198655
+  },
+  "profiles": {}
+}
