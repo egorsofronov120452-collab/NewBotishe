@@ -1,5 +1,132 @@
 # Перенос функций бота в VK Mini App
 
+## Архитектура проекта
+
+```
+[ VK Mini App (Next.js) ]  ←→  [ API Routes (Vercel) ]  ←→  [ JSON файлы данных ]
+                                                                       ↑
+[ long-polling.cjs ]  ─────────────────────────────────────────────────┘
+(запускается на ПК / VPS отдельно от Vercel)
+```
+
+- **Next.js + Vercel** — фронтенд мини-апп и API эндпоинты (уже задеплоен)
+- **long-polling.cjs** — бот, работает отдельно: `node scripts/long-polling.cjs`
+- Оба читают/пишут одни и те же JSON файлы (или через API)
+
+---
+
+## 1. Создание Mini App в VK
+
+1. Открыть https://vk.com/editapp?act=create
+2. Выбрать **«Приложение для сообщества»**
+3. Привязать к нужной группе (такси или доставка)
+4. В поле **URL** вставить адрес вашего Vercel деплоя: `https://your-app.vercel.app`
+5. Настройки → включить **«Доступ к сообщениям сообщества»**
+6. Скопировать **App ID** — он понадобится для инициализации bridge
+
+Кнопку «Открыть приложение» можно добавить прямо в меню группы ВКонтакте.
+
+---
+
+## 2. Деплой на Vercel (фронтенд + API)
+
+```bash
+# Установить Vercel CLI
+npm i -g vercel
+
+# В папке проекта
+vercel --prod
+```
+
+Vercel автоматически определит Next.js и задеплоит. После этого:
+- Мини-апп доступен по адресу: `https://your-app.vercel.app`
+- API доступно по: `https://your-app.vercel.app/api/...`
+
+> long-polling.cjs **не деплоится на Vercel** — Vercel не поддерживает долгоживущие процессы.
+> Бот запускается на ПК или отдельном VPS через PM2.
+
+---
+
+## 3. Запуск бота отдельно (ПК или VPS)
+
+```bash
+# Установка PM2
+npm install -g pm2
+
+# Запуск бота
+pm2 start scripts/long-polling.cjs --name vk-bot
+pm2 save
+pm2 startup   # автозапуск при перезагрузке
+
+# Просмотр логов
+pm2 logs vk-bot
+```
+
+---
+
+## 4. Инициализация VK Bridge в мини-апп
+
+```typescript
+// app/layout.tsx или pages/_app.tsx
+import bridge from '@vkontakte/vk-bridge';
+
+// Вызвать один раз при старте приложения
+bridge.send('VKWebAppInit');
+
+// Получить VK user_id текущего пользователя
+const { id } = await bridge.send('VKWebAppGetUserInfo');
+```
+
+Установка пакетов:
+```bash
+npm install @vkontakte/vk-bridge @vkontakte/vkui
+```
+
+---
+
+## 5. Интерактивная карта такси (уже реализована)
+
+Карта уже работает в `/taxi-order` — пользователь нажимает откуда и куда,  
+цена считается автоматически по расстоянию между точками.
+
+Для перевода на реальные координаты (Leaflet / OpenStreetMap):
+
+```tsx
+// Заменить x/y на lat/lng в map-editor.html (добавить поля «Широта» и «Долгота»)
+// calculateTaxiPrice() в long-polling.cjs автоматически переключится на Haversine
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 +
+    Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+// Тариф: 45р/км, +30% в часы пик (18-22 МСК)
+```
+
+---
+
+## 6. Что остаётся только в боте (не переносить)
+
+- Диспетчерская — приём заказов с inline-кнопками в чате
+- Журнал активности (`!онлайн`, `!афк`, `!вышел`)
+- Закупки курьера
+- Ежедневные/еженедельные отчёты руководству
+- Чат-команды (`!кик`, `!инвайт`, `!пост` и т.д.)
+
+---
+
+## 7. Переменные окружения на Vercel
+
+В настройках проекта на Vercel добавьте те же переменные что и в `.env`:
+`VK_GROUP1_TOKEN`, `VK_GROUP3_TOKEN`, `VK_GROUP1_ID`, `VK_GROUP3_ID` и т.д.
+
+Это нужно чтобы API роуты (`/api/taxi-pick`, `/api/taxi-points`) могли  
+авторизовывать запросы и записывать данные.
+
+
 ## Что можно реализовать через Mini App (рекомендуется)
 
 VK Mini App — это React/Vue веб-приложение, которое открывается прямо внутри ВКонтакте.  

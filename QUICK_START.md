@@ -202,21 +202,72 @@ VK_CHAT_TAXI_UCHEBNY_ID=xxx        # 12. Учебный центр TAXI
 
 ---
 
-## Запуск и управление
+## Запуск на VPS (полная инструкция)
 
-**Запуск:**
+### Шаг 1: Скачайте проект
+
+1. Скачайте ZIP-архив проекта из v0
+2. Загрузите на VPS через SFTP (FileZilla, WinSCP) или git
+
+### Шаг 2: Установите Node.js и PM2
+
 ```bash
-node scripts/long-polling.cjs
+# Установка Node.js (Ubuntu/Debian)
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Установка PM2
+npm install -g pm2
 ```
 
-**PM2 (рекомендуется):**
+### Шаг 3: Настройте проект
+
 ```bash
+cd /путь/к/проекту
+
+# Установка зависимостей
+npm install
+
+# Создайте .env файл
+cp .env.example .env
+nano .env  # или vim .env
+```
+
+### Шаг 4: Заполните .env
+
+```env
+# Токены групп ВК (получить в настройках группы -> API)
+VK_GROUP1_TOKEN=ваш_токен_группы_1
+VK_GROUP1_ID=id_группы_1
+VK_GROUP2_TOKEN=ваш_токен_группы_2
+VK_GROUP2_ID=id_группы_2
+VK_GROUP3_TOKEN=ваш_токен_группы_3
+VK_GROUP3_ID=id_группы_3
+
+# ID чатов (получить из URL беседы: vk.com/im?sel=c123 -> ID=123)
+VK_CHAT_RUKOVODSTVO_ID=123
+VK_CHAT_SS_ID=124
+# ... остальные чаты
+
+# Опционально
+VK_USER_TOKEN=токен_пользователя_для_расширенных_функций
+VK_ORG_BANK_ACCOUNT=номер_счёта
+TAXI_DEFAULT_PRICE=500
+```
+
+### Шаг 5: Запустите бота
+
+```bash
+# Тестовый запуск (Ctrl+C для остановки)
+node scripts/long-polling.cjs
+
+# Запуск через PM2 (работает в фоне)
 pm2 start scripts/long-polling.cjs --name vk-bot
 pm2 save
-pm2 startup
+pm2 startup  # автозапуск при перезагрузке сервера
 ```
 
-**Управление через PM2:**
+### Управление через PM2:
 ```bash
 pm2 status          # статус
 pm2 logs vk-bot     # логи
@@ -231,3 +282,5 @@ pm2 stop vk-bot     # остановка
 Подробная информация по каждой команде: **[VK_BOT_COMMANDS.md](VK_BOT_COMMANDS.md)**
 
 История обновлений: **[UPDATE_NOTES.md](UPDATE_NOTES.md)**
+
+Инструкция по VK Mini App и деплою: **[VKMINIAPP_GUIDE.md](VKMINIAPP_GUIDE.md)**
