@@ -804,19 +804,15 @@ async function showOrderItems(peerId, uid, sess, category, cat, groupKey) {
   if (nav.length) rows.push(nav);
   rows.push([{ label: '← Назад к категориям', color: 'secondary' }, { label: 'Корзина', color: 'positive' }]);
 
-  const basketInfo = sess.data.basket.length > 0
-    ? `\n\n${buildBasketText(sess.data.basket)}`
-    : '\n\nКорзина пуста.';
+  const basketLine = sess.data.basket.length > 0
+    ? `Корзина: ${sess.data.basket.map(i => `${i.name} x${i.qty}`).join(', ')}`
+    : 'Корзина пуста.';
 
-  const text = `Категория: ${category.name}\nСтраница ${page+1}${basketInfo}`;
+  const text = `Категория: ${category.name} | стр. ${page+1}\n${basketLine}`;
 
-  // Редактируем одно сообщение если уже отправлено
-  if (sess.data.orderMsgId) {
-    await editMessage(peerId, sess.data.orderMsgId, text, { keyboard: msgKb(rows) }, groupKey);
-  } else {
-    const msgId = await sendMessage(peerId, text, { keyboard: msgKb(rows) }, groupKey);
-    sess.data.orderMsgId = msgId;
-  }
+  // VK messages.edit не поддерживает обычную клавиатуру — всегда отправляем новое сообщение
+  const msgId = await sendMessage(peerId, text, { keyboard: msgKb(rows) }, groupKey);
+  sess.data.orderMsgId = msgId;
 }
 
 function getItemsForCategory(cat, category) {
@@ -835,13 +831,9 @@ async function showBasket(peerId, uid, sess, groupKey) {
     [{ label: 'Главное меню', color: 'secondary' }],
   ];
   const text = buildBasketText(sess.data.basket);
-  // Если уже есть сообщение корзины — редактируем его, иначе отправляем новое
-  if (sess.data.basketMsgId) {
-    await editMessage(peerId, sess.data.basketMsgId, text, { keyboard: msgKb(rows) }, groupKey);
-  } else {
-    const msgId = await sendMessage(peerId, text, { keyboard: msgKb(rows) }, groupKey);
-    sess.data.basketMsgId = msgId;
-  }
+  // VK messages.edit не поддерживает обычную клавиатуру — всегда отправляем новое сообщение
+  const msgId = await sendMessage(peerId, text, { keyboard: msgKb(rows) }, groupKey);
+  sess.data.basketMsgId = msgId;
 }
 
 // ─────────────────────────── ORDER REPORT (скрины после заказа) ─
@@ -1145,6 +1137,37 @@ const STAFF_STEP = {
   COURIER_ACCEPT_ETA:  'courier_accept_eta',
 };
 
+// ─────────────────────────── STAFF PROFILE HELPERS ───────────
+const STAFF_PAGE_SIZE = 8;
+
+async function sendStaffListPage(peerId, staffList, page) {
+  const total = staffList.length;
+  const start = page * STAFF_PAGE_SIZE;
+  const slice = staffList.slice(start, start + STAFF_PAGE_SIZE);
+  const roleLabel = r => ({ rs: 'РС', ss: 'СС', kurier: 'Курьер', stazher: 'Стажёр' }[r] || r);
+  const rows = slice.map(s => [{ label: s.nick, color: 'secondary' }]);
+  const nav = [];
+  if (page > 0) nav.push({ label: '← Назад', color: 'secondary' });
+  if (start + STAFF_PAGE_SIZE < total) nav.push({ label: '→ Далее', color: 'secondary' });
+  if (nav.length) rows.push(nav);
+  rows.push([{ label: 'Главное меню', color: 'negative' }]);
+  const header = `Сотрудники (${total}), стр. ${page+1}/${Math.ceil(total/STAFF_PAGE_SIZE)}:\n`
+    + slice.map(s => `• [${roleLabel(s.role)}] ${s.nick}`).join('\n');
+  await sendMessage(peerId, header, { keyboard: msgKb(rows) }, 1);
+}
+
+async function sendStaffProfile(peerId, target) {
+  const roleLabel = { rs: 'РС', ss: 'СС', kurier: 'Курьер', stazher: 'Стажёр' }[target.role] || target.role;
+  const cars = (target.vehicles || []);
+  const carLines = cars.map(v => `  • ${v.name}${v.brandColor ? ' (фирм.)' : ''}${v.photoId ? ' [есть фото]' : ''}`).join('\n') || '  (нет)';
+  const text = `Профиль: ${target.nick}\nРоль: ${roleLabel}\nБанк: ${target.bank || '—'}\nАвтопарк:\n${carLines}\nДоставка: ${target.stats?.deliveryOrders || 0}\nТакси: ${target.stats?.taxiOrders || 0}`;
+  const rows = cars
+    .filter(v => v.photoId)
+    .map(v => [{ label: `Фото: ${v.name}`, color: 'secondary' }]);
+  rows.push([{ label: '← К списку', color: 'secondary' }, { label: 'Главное меню', color: 'negative' }]);
+  await sendMessage(peerId, text, { keyboard: msgKb(rows) }, 1);
+}
+
 async function handleGroup1DM(event) {
   const uid    = event.from_id;
   const text   = (event.text || '').trim();
@@ -1264,7 +1287,7 @@ async function handleGroup1DM(event) {
     sess.data.nick = text;
     sess.step = STAFF_STEP.REG_BANK;
     storage.staffSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите номер вашего банковского счёта (для выплат):', {}, 1);
+    await sendMessage(peerId, 'Введите номер вашего банковского с��ёта (для выплат):', {}, 1);
     return;
   }
 
@@ -1310,7 +1333,7 @@ async function handleGroup1DM(event) {
     const orgCars = (profile.orgVehicles || []).map(v => `  • ${v.name}`).join('\n');
     const text2   = `Профиль сотрудника:\n\nНик: ${profile.nick}\nБанк. счёт: ${profile.bank}\nРоль: ${profile.role}\n\nЛичный автопарк:\n${cars || '  (нет)'}\n��вто организации:\n${orgCars || '  (нет)'}\n\nСтатистика:\n  Заказы доставки: ${profile.stats?.deliveryOrders || 0}\n  Заказы такси: ${profile.stats?.taxiOrders || 0}`;
     await sendMessage(peerId, text2, { keyboard: msgKb([
-      [{ label: 'Автопарк', color: 'secondary' }, { label: 'Изменить ник', color: 'secondary' }, { label: 'Изменить счёт', color: 'secondary' }],
+      [{ label: 'Автопарк', color: 'secondary' }, { label: 'Изме��ить ник', color: 'secondary' }, { label: 'Изменить счёт', color: 'secondary' }],
       [{ label: 'Главное меню', color: 'secondary' }],
     ]) }, 1);
     return;
@@ -1363,23 +1386,73 @@ async function handleGroup1DM(event) {
     return;
   }
 
-  // «Профиль сотрудника» — поиск по нику
+  // «Профиль сотрудника» — список кнопок с пагинацией
   if (isSs && text === 'Профиль сотрудника') {
-    sess.step = 'find_staff';
+    const staffList = Object.values(staff);
+    if (!staffList.length) { await sendMessage(peerId, 'Нет сотрудников.', {}, 1); return; }
+    sess.step = 'find_staff_list';
+    sess.data.staffPage = 0;
     storage.staffSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите ник сотрудника:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
+    await sendStaffListPage(peerId, staffList, 0);
     return;
   }
-  if (step === 'find_staff') {
-    if (text === 'Отмена') { sess.step = STAFF_STEP.NONE; storage.staffSessions.set(uid, sess); await showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role); return; }
-    const target = Object.values(staff).find(s => s.nick.toLowerCase() === text.toLowerCase());
-    if (!target) { await sendMessage(peerId, `Сотрудник «${text}» не найден.`, {}, 1); return; }
-    const cars = (target.vehicles || []).map(v => `  • ${v.name}${v.brandColor ? ' [фирм.]' : ''}`).join('\n');
-    await sendMessage(peerId,
-      `Профиль: ${target.nick}\nРоль: ${target.role}\nБанк: ${target.bank}\nАвтопарк:\n${cars || '  (нет)'}\nЗаказы доставки: ${target.stats?.deliveryOrders || 0}\nЗаказы такси: ${target.stats?.taxiOrders || 0}`,
-      { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 1);
-    sess.step = STAFF_STEP.NONE;
-    storage.staffSessions.set(uid, sess);
+
+  if (step === 'find_staff_list') {
+    const staffList = Object.values(staff);
+    if (text === 'Отмена' || text === 'Главное меню') {
+      sess.step = 'none'; storage.staffSessions.set(uid, sess);
+      await showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role); return;
+    }
+    if (text === '→ Далее') {
+      sess.data.staffPage = (sess.data.staffPage || 0) + 1;
+      storage.staffSessions.set(uid, sess);
+      await sendStaffListPage(peerId, staffList, sess.data.staffPage);
+      return;
+    }
+    if (text === '← Назад') {
+      sess.data.staffPage = Math.max(0, (sess.data.staffPage || 0) - 1);
+      storage.staffSessions.set(uid, sess);
+      await sendStaffListPage(peerId, staffList, sess.data.staffPage);
+      return;
+    }
+    // Нажали на кнопку с ником — показываем профиль + фото
+    const target = staffList.find(s => s.nick === text);
+    if (target) {
+      sess.step = 'find_staff_profile';
+      sess.data.viewStaffUid = target.uid;
+      storage.staffSessions.set(uid, sess);
+      await sendStaffProfile(peerId, target);
+      return;
+    }
+    return;
+  }
+
+  if (step === 'find_staff_profile') {
+    if (text === '← К списку') {
+      sess.step = 'find_staff_list';
+      storage.staffSessions.set(uid, sess);
+      const staffList = Object.values(staff);
+      await sendStaffListPage(peerId, staffList, sess.data.staffPage || 0);
+      return;
+    }
+    if (text === 'Главное меню' || text === 'Отмена') {
+      sess.step = 'none'; storage.staffSessions.set(uid, sess);
+      await showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role); return;
+    }
+    // Кнопка фото машины «Фото: <name>»
+    if (text.startsWith('Фото: ')) {
+      const carName = text.slice(6);
+      const target = Object.values(staff).find(s => s.uid === sess.data.viewStaffUid);
+      if (target) {
+        const car = (target.vehicles || []).find(v => v.name === carName);
+        if (car && car.photoId) {
+          await sendMessage(peerId, `Фото: ${car.name}`, { attachment: car.photoId }, 1);
+        } else {
+          await sendMessage(peerId, `Фото для «${carName}» не загружено.`, {}, 1);
+        }
+      }
+      return;
+    }
     return;
   }
 
@@ -3129,7 +3202,7 @@ async function handleChatCommand(event, groupKey) {
   //   !кик @id12345                           — кик из текущего чата
   //   !кик @id12345 все Нарушение правил      — кик из ВСЕХ чатов организации
   //   !кик @id12345 доставка Флуд             — кик из всех чатов доставки
-  //   !кик @id12345 такси                     — кик из всех чатов такси
+  //   !кик @id12345 такси                     — кик из всех ��атов такси
   if (cmd === '!кик') {
     if (!isSs) { await sendMessage(peerId, 'Только РС и СС', {}, groupKey); return true; }
 
@@ -3445,7 +3518,7 @@ async function handleCallback(event, groupKey) {
     // Notify client
     const reviewLink = `vk.com/wall-${G1_ID}?w=wall-${G1_ID}_1`; // placeholder
     await sendMessage(order.clientId,
-      `Заказ завершён! Спасибо!\nОставьте отзыв или жалобу: ${reviewLink}`,
+      `Заказ завершён! Спасибо!\nОстав��те отзыв или жалобу: ${reviewLink}`,
       { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) },
       order.type === 'taxi' ? 3 : 2);
 
