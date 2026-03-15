@@ -1299,7 +1299,7 @@ async function handleGroup1DM(event) {
     if (adminResult4) return;
   }
 
-  // Default — нераспознанный текст, показываем меню
+  // Default — нер��спознанный текст, показываем меню
   await showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role);
 }
 
@@ -1333,7 +1333,7 @@ async function showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role) {
 // ─────────────────────────── VEHICLE MANAGEMENT ───────────────
 async function showVehicleMenu(uid, peerId, profile) {
   const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
-  const text = `Автопарк:\n\nЛичные авто:\n${(profile.vehicles || []).map(v => `• ${v.name}${v.brandColor ? ' [фирм.]' : ''}`).join('\n') || '(нет)'}\n\nАвто организации:\n${(profile.orgVehicles || []).map(v => `• ${v.name}`).join('\n') || '(нет)'}`;
+  const text = `Автопар��:\n\nЛичные авто:\n${(profile.vehicles || []).map(v => `• ${v.name}${v.brandColor ? ' [фирм.]' : ''}`).join('\n') || '(нет)'}\n\nАвто организации:\n${(profile.orgVehicles || []).map(v => `• ${v.name}`).join('\n') || '(нет)'}`;
   await sendMessage(peerId, text, {
     keyboard: msgKb([
       [{ label: 'Добавить личное авто' }, { label: 'Взять авто организации' }],
@@ -2020,8 +2020,9 @@ function clearTaxiPick(token) {
  */
 async function sendMapPickerLink(peerId, token, groupKey) {
   const url = `${APP_URL}/taxi-order?token=${token}&step=from`;
+  console.log(`[Bot] sendMapPickerLink: APP_URL=${APP_URL}, url=${url}`);
   await sendMessage(peerId,
-    `Выберите точки маршрута на карте.\n\nНажмите кнопку ниже — откроется карта. Сначала выберите откуда, затем куда. После выбора вернитесь сюда, бот продолжит автоматически.\n\nСсылка на карту:\n${url}`,
+  `Выберите точки маршрута на карте.\n\nНажмите кнопку ниже — откроется карта. Сначала выберите откуда, затем куда. После выбора вернитесь сюда, бот продолжит автоматически.\n\nСсылка на карту:\n${url}`,
     {
       keyboard: msgKb([
         [{ label: 'Открыть карту', color: 'positive' }],
@@ -3127,7 +3128,8 @@ async function handleChatCommand(event, groupKey) {
 
 // ─────────────────────────── CALLBACK HANDLER ─────────────────
 async function handleCallback(event, groupKey) {
-  const uid     = event.user_id || event.from_id;
+  // Ensure uid is always a number for consistent Map key lookup
+  const uid     = parseInt(event.user_id || event.from_id);
   const peerId  = event.peer_id;
   let payload;
   try { payload = typeof event.payload === 'string' ? JSON.parse(event.payload) : event.payload; }
@@ -3143,8 +3145,9 @@ async function handleCallback(event, groupKey) {
     const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
     if (!order || order.status !== 'pending') { return; }
 
-    // Check online status
+    // Check online status - use parseInt to ensure consistent Map key
     const onlineInfo = storage.online.get(uid);
+    console.log(`[Bot] accept_order: uid=${uid}, onlineInfo=`, onlineInfo ? JSON.stringify(onlineInfo) : 'null', ', online keys:', [...storage.online.keys()]);
     if (!onlineInfo || !onlineInfo.online) {
       await sendMessage(uid, 'Вы не в онлайне. Напишите !онлайн в журнале активности.', {}, 1);
       return;
