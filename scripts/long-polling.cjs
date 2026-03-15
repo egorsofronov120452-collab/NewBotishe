@@ -1287,10 +1287,19 @@ async function handleGroup1DM(event) {
     return;
   }
 
-  // Кнопка «Управление авто»
-  if (isRs && text === 'Управление авто') {
+  // Кнопка «Управление авто» - доступна РС и СС
+  if ((isRs || isSs) && text === 'Управление авто') {
     const adminResult3 = await handleAdminVehiclesSession(uid, peerId, text, event);
     if (adminResult3) return;
+  }
+  
+  // Обработка шагов управления авто для РС и СС
+  if ((isRs || isSs)) {
+    const adminSess = storage.adminSessions.get(uid);
+    if (adminSess && adminSess.step && adminSess.step.startsWith('admin_')) {
+      const adminResult3 = await handleAdminVehiclesSession(uid, peerId, text, event);
+      if (adminResult3) return;
+    }
   }
 
   // Кнопка «Управление точками такси»
@@ -1313,11 +1322,12 @@ async function showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role) {
 
   if (isSs) {
     rows.push([{ label: 'Управление каталогом', color: 'primary' }]);
+    rows.push([{ label: 'Управление авто', color: 'primary' }]);
     rows.push([{ label: 'Список сотрудников', color: 'secondary' }, { label: 'Профиль сотрудника', color: 'secondary' }]);
   }
   if (isRs) {
     rows.push([{ label: 'Управление промокодами', color: 'primary' }]);
-    rows.push([{ label: 'Управление авто', color: 'primary' }]);
+    if (!isSs) rows.push([{ label: 'Управление авто', color: 'primary' }]); // Если не СС, добавляем кнопку
     rows.push([{ label: 'Управление точками такси', color: 'primary' }]);
   }
 
@@ -1333,7 +1343,7 @@ async function showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role) {
 // ─────────────────────────── VEHICLE MANAGEMENT ───────────────
 async function showVehicleMenu(uid, peerId, profile) {
   const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
-  const text = `Автопар��:\n\nЛичные авто:\n${(profile.vehicles || []).map(v => `• ${v.name}${v.brandColor ? ' [фирм.]' : ''}`).join('\n') || '(нет)'}\n\nАвто организации:\n${(profile.orgVehicles || []).map(v => `• ${v.name}`).join('\n') || '(нет)'}`;
+  const text = `Автоп��р��:\n\nЛичные авто:\n${(profile.vehicles || []).map(v => `• ${v.name}${v.brandColor ? ' [фирм.]' : ''}`).join('\n') || '(нет)'}\n\nАвто организации:\n${(profile.orgVehicles || []).map(v => `• ${v.name}`).join('\n') || '(нет)'}`;
   await sendMessage(peerId, text, {
     keyboard: msgKb([
       [{ label: 'Добавить личное авто' }, { label: 'Взять авто организации' }],
@@ -1895,7 +1905,7 @@ async function handleAdminTaxiPoints(uid, peerId, text, event) {
     sess.step = 'tp_add_point_cat'; storage.adminSessions.set(uid, sess);
     const rows = tp.categories.map(c => [{ label: c.name }]);
     rows.push([{ label: 'Отмена', color: 'negative' }]);
-    await sendMessage(peerId, 'Выберите категорию для новой точки:', { keyboard: msgKb(rows) }, 1);
+    await sendMessage(peerId, 'Выберите категорию для новой то��ки:', { keyboard: msgKb(rows) }, 1);
     return true;
   }
   if (step === 'tp_add_point_cat') {
@@ -2209,7 +2219,7 @@ async function handleTaxiDM(event) {
       sess.step = TAXI_STEP.ORDER_PAYMENT_SCREEN;
       storage.clientSessions.set('taxi_'+uid, sess);
       await sendMessage(peerId,
-        `Итоговая сумма (с комиссией ${Math.round(pay.commission*100)}%): ${finalPrice}р.\n\nПереведите средства на ��чёт ${ORG_BANK} и пришлите скриншот оплаты с /timestamp или временем над HUD.`,
+        `Итоговая ��умма (с комиссией ${Math.round(pay.commission*100)}%): ${finalPrice}р.\n\nПереведите средства на ��чёт ${ORG_BANK} и пришлите скриншот оплаты с /timestamp или временем над HUD.`,
         { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 3);
       return;
     }
@@ -2851,7 +2861,7 @@ async function handleChatCommand(event, groupKey) {
   const isRs   = role === 'rs';
   const isSs   = role === 'ss' || isRs;
 
-  // !пост [доставка|такси] — публикация на стену группы
+  // !пост [��оставка|такси] — публикация на стену группы
   // Если аргумент не указан, определяем по текущему чату
   if (cmd === '!пост') {
     if (!isSs) { await sendMessage(peerId, 'Команда доступна только РС и СС', {}, groupKey); return true; }
