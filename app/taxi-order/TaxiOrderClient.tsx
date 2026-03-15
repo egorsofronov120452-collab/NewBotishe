@@ -1,9 +1,21 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 
-interface Point { x: number; y: number }
+interface Category {
+  id: string
+  name: string
+  color: string
+  icon: string
+}
+
+interface TaxiPoint {
+  id: string
+  name: string
+  categoryId: string
+  address?: string
+}
 
 type Step = 'from' | 'to' | 'confirm' | 'done'
 
@@ -11,801 +23,363 @@ export default function TaxiOrderClient() {
   const searchParams = useSearchParams()
   const token = searchParams.get('token') || ''
 
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const mapImgRef = useRef<HTMLImageElement | null>(null)
-  const roadMaskRef = useRef<HTMLCanvasElement | null>(null)
-
   const [step, setStep] = useState<Step>('from')
-  const [fromPoint, setFromPoint] = useState<Point | null>(null)
-  const [toPoint, setToPoint] = useState<Point | null>(null)
-  const [path, setPath] = useState<Point[]>([])
-  const [status, setStatus] = useState<'idle' | 'sending' | 'done' | 'error'>('idle')
-  const [errorMsg, setErrorMsg] = useState('')
-  const [mapLoaded, setMapLoaded] = useState(false)
-  const [mapSize, setMapSize] = useState({ width: 0, height: 0 })
-
-  // Pan/zoom state
-  const viewRef = useRef({ zoom: 1, panX: 0, panY: 0 })
-  const panRef = useRef({ active: false, lastX: 0, lastY: 0 })
-
-  // Road data
-  const roadDataRef = useRef<{
-    radars: { id: string; x: number; y: number; width: number }[]
-    trafficLights: { id: string; x: number; y: number; width: number }[]
-    oneWays: { id: string; segments: { x1: number; y1: number; x2: number; y2: number }[]; direction: string }[]
-  }>({ radars: [], trafficLights: [], oneWays: [] })
-
-  // Load map and road data
-  useEffect(() => {
-    async function loadData() {
-      try {
-        // Load road data from API
-        const roadRes = await fetch('/api/taxi-map')
-        const roadJson = await roadRes.json()
-        
-        if (roadJson.ok && roadJson.data) {
-          const data = roadJson.data
-          roadDataRef.current = {
-            radars: data.radars || [],
-            trafficLights: data.trafficLights || [],
-            oneWays: data.oneWays || [],
-          }
-          
-          // Load map image
-          if (data.mapImageUrl) {
-            const img = new window.Image()
-            img.crossOrigin = 'anonymous'
-            img.onload = () => {
-              mapImgRef.current = img
-              setMapSize({ width: img.width, height: img.height })
-              
-              // Center map initially
-              const canvas = canvasRef.current
-              if (canvas) {
-                viewRef.current.panX = (canvas.width - img.width) / 2
-                viewRef.current.panY = (canvas.height - img.height) / 2
-              }
-              
-              setMapLoaded(true)
-            }
-            img.onerror = () => {
-              console.error('Failed to load map image')
-              setMapLoaded(true)
-            }
-            img.src = data.mapImageUrl
-          } else {
-            setMapLoaded(true)
-          }
-          
-          // Load road mask if exists
-          if (data.roadMask) {
-            const maskImg = new window.Image()
-            maskImg.crossOrigin = 'anonymous'
-            maskImg.onload = () => {
-              const maskCanvas = document.createElement('canvas')
-              maskCanvas.width = maskImg.width
-              maskCanvas.height = maskImg.height
-              const ctx = maskCanvas.getContext('2d')
-              if (ctx) {
-                ctx.drawImage(maskImg, 0, 0)
-                roadMaskRef.current = maskCanvas
-              }
-            }
-            maskImg.src = data.roadMask
-          }
-        } else {
-          setMapLoaded(true)
-        }
-      } catch {
-        setMapLoaded(true)
-      }
-    }
-    
-    loadData()
-  }, [])
-
-  // Coordinate transforms
-  const w2s = useCallback((wx: number, wy: number) => {
-    const { zoom, panX, panY } = viewRef.current
-    return { x: wx * zoom + panX, y: wy * zoom + panY }
-  }, [])
-
-  const s2w = useCallback((sx: number, sy: number) => {
-    const { zoom, panX, panY } = viewRef.current
-    return { x: (sx - panX) / zoom, y: (sy - panY) / zoom }
-  }, [])
-
-  // Check if point is on or near road
-  const isOnRoad = useCallback((wx: number, wy: number): boolean => {
-    if (!roadMaskRef.current) return true // Allow anywhere if no mask
-    const ctx = roadMaskRef.current.getContext('2d')
-    if (!ctx) return true
-    
-    const x = Math.round(wx)
-    const y = Math.round(wy)
-    if (x < 0 || y < 0 || x >= roadMaskRef.current.width || y >= roadMaskRef.current.height) {
-      return false
-    }
-    
-    // Check a small area for road
-    for (let dx = -5; dx <= 5; dx++) {
-      for (let dy = -5; dy <= 5; dy++) {
-        const px = x + dx
-        const py = y + dy
-        if (px >= 0 && py >= 0 && px < roadMaskRef.current.width && py < roadMaskRef.current.height) {
-          const pixel = ctx.getImageData(px, py, 1, 1).data
-          if (pixel[3] > 60) return true
-        }
-      }
-    }
-    return false
-  }, [])
-
-  // Snap point to nearest road
-  const snapToRoad = useCallback((wx: number, wy: number): Point => {
-    if (!roadMaskRef.current) return { x: wx, y: wy }
-    const ctx = roadMaskRef.current.getContext('2d')
-    if (!ctx) return { x: wx, y: wy }
-    
-    const x = Math.round(wx)
-    const y = Math.round(wy)
-    
-    // Check if already on road
-    if (x >= 0 && y >= 0 && x < roadMaskRef.current.width && y < roadMaskRef.current.height) {
-      const pixel = ctx.getImageData(x, y, 1, 1).data
-      if (pixel[3] > 60) return { x, y }
-    }
-    
-    // Search in expanding squares
-    for (let r = 1; r < 50; r++) {
-      for (let dx = -r; dx <= r; dx++) {
-        for (let dy = -r; dy <= r; dy++) {
-          if (Math.abs(dx) === r || Math.abs(dy) === r) {
-            const px = x + dx
-            const py = y + dy
-            if (px >= 0 && py >= 0 && px < roadMaskRef.current.width && py < roadMaskRef.current.height) {
-              const pixel = ctx.getImageData(px, py, 1, 1).data
-              if (pixel[3] > 60) return { x: px, y: py }
-            }
-          }
-        }
-      }
-    }
-    
-    return { x: wx, y: wy }
-  }, [])
-
-  // Draw canvas
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    const { zoom, panX, panY } = viewRef.current
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-    // Background
-    ctx.fillStyle = '#0a0a0f'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-    // Grid
-    const gridStep = 50 * zoom
-    if (gridStep > 8) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.03)'
-      ctx.lineWidth = 1
-      for (let x = panX % gridStep; x < canvas.width; x += gridStep) {
-        ctx.beginPath()
-        ctx.moveTo(x, 0)
-        ctx.lineTo(x, canvas.height)
-        ctx.stroke()
-      }
-      for (let y = panY % gridStep; y < canvas.height; y += gridStep) {
-        ctx.beginPath()
-        ctx.moveTo(0, y)
-        ctx.lineTo(canvas.width, y)
-        ctx.stroke()
-      }
-    }
-
-    // Map image
-    if (mapImgRef.current) {
-      ctx.globalAlpha = 0.9
-      ctx.drawImage(
-        mapImgRef.current,
-        panX,
-        panY,
-        mapImgRef.current.width * zoom,
-        mapImgRef.current.height * zoom
-      )
-      ctx.globalAlpha = 1
-    }
-
-    // Road mask overlay (semi-transparent)
-    if (roadMaskRef.current) {
-      ctx.globalAlpha = 0.25
-      ctx.drawImage(
-        roadMaskRef.current,
-        panX,
-        panY,
-        roadMaskRef.current.width * zoom,
-        roadMaskRef.current.height * zoom
-      )
-      ctx.globalAlpha = 1
-    }
-
-    // Draw radars
-    for (const radar of roadDataRef.current.radars) {
-      const { x: sx, y: sy } = w2s(radar.x, radar.y)
-      const size = (radar.width || 20) * zoom * 0.5
-      
-      ctx.fillStyle = 'rgba(245, 158, 11, 0.3)'
-      ctx.strokeStyle = '#f59e0b'
-      ctx.lineWidth = 2
-      ctx.beginPath()
-      ctx.arc(sx, sy, size, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.stroke()
-      
-      ctx.font = `bold ${Math.max(10, 12 * zoom)}px system-ui`
-      ctx.fillStyle = '#f59e0b'
-      ctx.textAlign = 'center'
-      ctx.fillText('R', sx, sy + 4)
-    }
-
-    // Draw traffic lights
-    for (const light of roadDataRef.current.trafficLights) {
-      const { x: sx, y: sy } = w2s(light.x, light.y)
-      const size = (light.width || 16) * zoom * 0.5
-      
-      ctx.fillStyle = 'rgba(34, 197, 94, 0.3)'
-      ctx.strokeStyle = '#22c55e'
-      ctx.lineWidth = 2
-      ctx.beginPath()
-      ctx.arc(sx, sy, size, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.stroke()
-      
-      ctx.font = `bold ${Math.max(10, 12 * zoom)}px system-ui`
-      ctx.fillStyle = '#22c55e'
-      ctx.textAlign = 'center'
-      ctx.fillText('S', sx, sy + 4)
-    }
-
-    // Draw one-way arrows
-    for (const ow of roadDataRef.current.oneWays) {
-      ctx.strokeStyle = 'rgba(124, 140, 255, 0.6)'
-      ctx.fillStyle = 'rgba(124, 140, 255, 0.6)'
-      ctx.lineWidth = 2 * zoom
-      
-      for (const seg of ow.segments) {
-        const start = w2s(seg.x1, seg.y1)
-        const end = w2s(seg.x2, seg.y2)
-        
-        ctx.beginPath()
-        ctx.moveTo(start.x, start.y)
-        ctx.lineTo(end.x, end.y)
-        ctx.stroke()
-        
-        // Arrow head
-        const angle = Math.atan2(end.y - start.y, end.x - start.x)
-        const arrowSize = 8 * zoom
-        const midX = (start.x + end.x) / 2
-        const midY = (start.y + end.y) / 2
-        
-        ctx.beginPath()
-        ctx.moveTo(midX + Math.cos(angle) * arrowSize, midY + Math.sin(angle) * arrowSize)
-        ctx.lineTo(midX + Math.cos(angle + 2.5) * arrowSize * 0.6, midY + Math.sin(angle + 2.5) * arrowSize * 0.6)
-        ctx.lineTo(midX + Math.cos(angle - 2.5) * arrowSize * 0.6, midY + Math.sin(angle - 2.5) * arrowSize * 0.6)
-        ctx.closePath()
-        ctx.fill()
-      }
-    }
-
-    // Draw path
-    if (path.length > 1) {
-      ctx.strokeStyle = '#7c8cff'
-      ctx.lineWidth = 4 * zoom
-      ctx.lineCap = 'round'
-      ctx.lineJoin = 'round'
-      ctx.setLineDash([10 * zoom, 6 * zoom])
-      
-      ctx.beginPath()
-      const first = w2s(path[0].x, path[0].y)
-      ctx.moveTo(first.x, first.y)
-      for (let i = 1; i < path.length; i++) {
-        const p = w2s(path[i].x, path[i].y)
-        ctx.lineTo(p.x, p.y)
-      }
-      ctx.stroke()
-      ctx.setLineDash([])
-    }
-
-    // Draw FROM point (A)
-    if (fromPoint) {
-      const { x: sx, y: sy } = w2s(fromPoint.x, fromPoint.y)
-      
-      // Glow
-      ctx.shadowColor = '#22c55e'
-      ctx.shadowBlur = 20
-      
-      // Circle
-      ctx.beginPath()
-      ctx.arc(sx, sy, 14, 0, Math.PI * 2)
-      ctx.fillStyle = '#22c55e'
-      ctx.fill()
-      ctx.shadowBlur = 0
-      
-      // Border
-      ctx.strokeStyle = '#fff'
-      ctx.lineWidth = 3
-      ctx.stroke()
-      
-      // Label
-      ctx.font = 'bold 12px system-ui'
-      ctx.fillStyle = '#fff'
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillText('A', sx, sy)
-    }
-
-    // Draw TO point (B)
-    if (toPoint) {
-      const { x: sx, y: sy } = w2s(toPoint.x, toPoint.y)
-      
-      // Glow
-      ctx.shadowColor = '#ef4444'
-      ctx.shadowBlur = 20
-      
-      // Circle
-      ctx.beginPath()
-      ctx.arc(sx, sy, 14, 0, Math.PI * 2)
-      ctx.fillStyle = '#ef4444'
-      ctx.fill()
-      ctx.shadowBlur = 0
-      
-      // Border
-      ctx.strokeStyle = '#fff'
-      ctx.lineWidth = 3
-      ctx.stroke()
-      
-      // Label
-      ctx.font = 'bold 12px system-ui'
-      ctx.fillStyle = '#fff'
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillText('B', sx, sy)
-    }
-  }, [fromPoint, toPoint, path, w2s, mapLoaded])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [points, setPoints] = useState<TaxiPoint[]>([])
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [fromPoint, setFromPoint] = useState<TaxiPoint | null>(null)
+  const [toPoint, setToPoint] = useState<TaxiPoint | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [sending, setSending] = useState(false)
+  const [done, setDone] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
-    draw()
-  }, [draw])
+    fetch('/api/taxi-points')
+      .then(r => r.json())
+      .then(d => {
+        setCategories(d.categories || [])
+        setPoints(d.points || [])
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
 
-  // Resize canvas
-  useEffect(() => {
-    const resize = () => {
-      const canvas = canvasRef.current
-      if (!canvas) return
-      canvas.width = window.innerWidth
-      canvas.height = window.innerHeight
-      draw()
-    }
-    resize()
-    window.addEventListener('resize', resize)
-    return () => window.removeEventListener('resize', resize)
-  }, [draw])
+  // Reset category filter when switching step
+  function goToStep(s: Step) {
+    setSelectedCategory(null)
+    setStep(s)
+  }
 
-  // Canvas interactions
-  function handleCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
-    if (step === 'done') return
-    
-    const rect = canvasRef.current!.getBoundingClientRect()
-    const sx = e.clientX - rect.left
-    const sy = e.clientY - rect.top
-    const world = s2w(sx, sy)
-    
-    // Snap to road
-    const snapped = snapToRoad(world.x, world.y)
-    
+  function handleSelectPoint(pt: TaxiPoint) {
     if (step === 'from') {
-      setFromPoint(snapped)
-      setStep('to')
+      setFromPoint(pt)
+      goToStep('to')
     } else if (step === 'to') {
-      setToPoint(snapped)
-      setStep('confirm')
-      // Simple direct path for now
-      if (fromPoint) {
-        setPath([fromPoint, snapped])
-      }
-    }
-    
-    draw()
-  }
-
-  function handleCanvasMouseDown(e: React.MouseEvent<HTMLCanvasElement>) {
-    if (e.button === 1 || e.button === 2) {
-      panRef.current = { active: true, lastX: e.clientX, lastY: e.clientY }
+      setToPoint(pt)
+      goToStep('confirm')
     }
   }
 
-  function handleCanvasMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
-    if (panRef.current.active) {
-      viewRef.current.panX += e.clientX - panRef.current.lastX
-      viewRef.current.panY += e.clientY - panRef.current.lastY
-      panRef.current.lastX = e.clientX
-      panRef.current.lastY = e.clientY
-      draw()
-    }
-  }
-
-  function handleCanvasMouseUp() {
-    panRef.current.active = false
-  }
-
-  function handleWheel(e: React.WheelEvent<HTMLCanvasElement>) {
-    e.preventDefault()
-    const rect = canvasRef.current!.getBoundingClientRect()
-    const sx = e.clientX - rect.left
-    const sy = e.clientY - rect.top
-    const factor = e.deltaY < 0 ? 1.12 : 0.9
-    const v = viewRef.current
-    v.panX = sx - (sx - v.panX) * factor
-    v.panY = sy - (sy - v.panY) * factor
-    v.zoom = Math.max(0.1, Math.min(10, v.zoom * factor))
-    draw()
-  }
-
-  // Reset selection
-  function handleReset() {
-    setFromPoint(null)
-    setToPoint(null)
-    setPath([])
-    setStep('from')
-    setStatus('idle')
-    setErrorMsg('')
-    draw()
-  }
-
-  // Generate route image as base64
-  async function generateRouteImage(): Promise<string | null> {
-    const canvas = document.createElement('canvas')
-    const size = 600
-    canvas.width = size
-    canvas.height = size
-    const ctx = canvas.getContext('2d')
-    if (!ctx || !fromPoint || !toPoint) return null
-
-    // Calculate bounds
-    const padding = 80
-    const minX = Math.min(fromPoint.x, toPoint.x) - padding
-    const minY = Math.min(fromPoint.y, toPoint.y) - padding
-    const maxX = Math.max(fromPoint.x, toPoint.x) + padding
-    const maxY = Math.max(fromPoint.y, toPoint.y) + padding
-    
-    const routeWidth = maxX - minX
-    const routeHeight = maxY - minY
-    const scale = Math.min(size / routeWidth, size / routeHeight) * 0.9
-    const offsetX = (size - routeWidth * scale) / 2 - minX * scale
-    const offsetY = (size - routeHeight * scale) / 2 - minY * scale
-
-    // Background
-    ctx.fillStyle = '#0a0a0f'
-    ctx.fillRect(0, 0, size, size)
-
-    // Draw map if available
-    if (mapImgRef.current) {
-      ctx.globalAlpha = 0.8
-      ctx.drawImage(
-        mapImgRef.current,
-        offsetX,
-        offsetY,
-        mapImgRef.current.width * scale,
-        mapImgRef.current.height * scale
-      )
-      ctx.globalAlpha = 1
-    }
-
-    // Draw route line
-    const fromSx = fromPoint.x * scale + offsetX
-    const fromSy = fromPoint.y * scale + offsetY
-    const toSx = toPoint.x * scale + offsetX
-    const toSy = toPoint.y * scale + offsetY
-
-    ctx.strokeStyle = '#7c8cff'
-    ctx.lineWidth = 4
-    ctx.setLineDash([12, 6])
-    ctx.beginPath()
-    ctx.moveTo(fromSx, fromSy)
-    ctx.lineTo(toSx, toSy)
-    ctx.stroke()
-    ctx.setLineDash([])
-
-    // Draw FROM point
-    ctx.shadowColor = '#22c55e'
-    ctx.shadowBlur = 15
-    ctx.beginPath()
-    ctx.arc(fromSx, fromSy, 20, 0, Math.PI * 2)
-    ctx.fillStyle = '#22c55e'
-    ctx.fill()
-    ctx.shadowBlur = 0
-    ctx.strokeStyle = '#fff'
-    ctx.lineWidth = 3
-    ctx.stroke()
-    ctx.font = 'bold 14px system-ui'
-    ctx.fillStyle = '#fff'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText('A', fromSx, fromSy)
-
-    // Draw TO point
-    ctx.shadowColor = '#ef4444'
-    ctx.shadowBlur = 15
-    ctx.beginPath()
-    ctx.arc(toSx, toSy, 20, 0, Math.PI * 2)
-    ctx.fillStyle = '#ef4444'
-    ctx.fill()
-    ctx.shadowBlur = 0
-    ctx.strokeStyle = '#fff'
-    ctx.lineWidth = 3
-    ctx.stroke()
-    ctx.font = 'bold 14px system-ui'
-    ctx.fillStyle = '#fff'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText('B', toSx, toSy)
-
-    // Draw info box
-    ctx.fillStyle = 'rgba(0,0,0,0.75)'
-    ctx.beginPath()
-    ctx.roundRect(15, 15, 180, 50, 8)
-    ctx.fill()
-    ctx.font = '12px system-ui'
-    ctx.fillStyle = '#7c8cff'
-    ctx.textAlign = 'left'
-    ctx.fillText('Kaskad Taxi', 25, 35)
-    ctx.font = 'bold 14px system-ui'
-    ctx.fillStyle = '#fff'
-    const dist = Math.round(Math.hypot(toPoint.x - fromPoint.x, toPoint.y - fromPoint.y))
-    ctx.fillText(`Маршрут: ~${dist}px`, 25, 52)
-
-    return canvas.toDataURL('image/png')
-  }
-
-  // Confirm and send order
   async function handleConfirm() {
     if (!fromPoint || !toPoint || !token) return
-    
-    setStatus('sending')
-    setErrorMsg('')
-    
+    setSending(true)
+    setError('')
     try {
-      // Generate route image
-      const routeImage = await generateRouteImage()
-      
-      const res = await fetch('/api/taxi-route', {
+      const fromCat = categories.find(c => c.id === fromPoint.categoryId)
+      const toCat   = categories.find(c => c.id === toPoint.categoryId)
+
+      const res = await fetch('/api/taxi-pick', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token,
-          from: fromPoint,
-          to: toPoint,
-          routeImage, // Send image to server
+          from: {
+            id: fromPoint.id,
+            name: fromPoint.name,
+            address: fromPoint.address || '',
+            categoryId: fromPoint.categoryId,
+            categoryName: fromCat?.name || '',
+          },
+          to: {
+            id: toPoint.id,
+            name: toPoint.name,
+            address: toPoint.address || '',
+            categoryId: toPoint.categoryId,
+            categoryName: toCat?.name || '',
+          },
         }),
       })
-      
       const data = await res.json()
-      if (!data.ok) throw new Error(data.error || 'Error')
-      
-      if (data.path) {
-        setPath(data.path)
-      }
-      
-      setStep('done')
-      setStatus('done')
+      if (!data.ok) throw new Error(data.error || 'Ошибка')
+      setDone(true)
     } catch (e) {
-      setStatus('error')
-      setErrorMsg(String(e))
+      setError(String(e))
+    } finally {
+      setSending(false)
     }
   }
 
-  // Step labels
-  const stepInfo = {
-    from: { title: 'Шаг 1/2', subtitle: 'Нажмите на карту, чтобы выбрать точку отправления (A)' },
-    to: { title: 'Шаг 2/2', subtitle: 'Нажмите на карту, чтобы выбрать точку назначения (B)' },
-    confirm: { title: 'Подтверждение', subtitle: 'Проверьте маршрут и подтвердите заказ' },
-    done: { title: 'Готово!', subtitle: 'Маршрут отправлен. Вернитесь в бот.' },
+  function handleReset() {
+    setFromPoint(null)
+    setToPoint(null)
+    setSelectedCategory(null)
+    setDone(false)
+    setError('')
+    setStep('from')
   }
 
-  return (
-    <div className="relative w-full h-screen overflow-hidden" style={{ background: '#0a0a0f' }}>
-      {/* Full screen canvas */}
-      <canvas
-        ref={canvasRef}
-        className="absolute inset-0 cursor-crosshair"
-        onClick={handleCanvasClick}
-        onMouseDown={handleCanvasMouseDown}
-        onMouseMove={handleCanvasMouseMove}
-        onMouseUp={handleCanvasMouseUp}
-        onMouseLeave={handleCanvasMouseUp}
-        onContextMenu={e => e.preventDefault()}
-        onWheel={handleWheel}
-        aria-label="Карта для выбора маршрута"
-      />
+  const filteredPoints = selectedCategory
+    ? points.filter(p => p.categoryId === selectedCategory)
+    : points
 
-      {/* Top bar */}
-      <div 
-        className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-3"
-        style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.8), transparent)' }}
-      >
-        <div>
-          <div className="text-sm font-bold" style={{ color: '#7c8cff' }}>Kaskad Taxi</div>
-          <div className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
-            {stepInfo[step].title}
+  const getCategoryColor = (catId: string) =>
+    categories.find(c => c.id === catId)?.color || '#6b7280'
+
+  // ---- DONE screen ----
+  if (done) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 font-sans" style={{ background: '#0f0f15', color: '#fff' }}>
+        <div
+          className="w-20 h-20 rounded-full flex items-center justify-center mb-6"
+          style={{ background: 'rgba(34,197,94,0.15)', border: '2px solid #22c55e' }}
+        >
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        </div>
+        <h1 className="text-2xl font-bold mb-2" style={{ color: '#fff' }}>Маршрут отправлен</h1>
+        <p className="text-center mb-8" style={{ color: 'rgba(255,255,255,0.5)', maxWidth: 300 }}>
+          Диспетчер получил ваш заказ. Вернитесь в Telegram-бот.
+        </p>
+        <div
+          className="w-full max-w-sm rounded-xl p-4 mb-6"
+          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+        >
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0" style={{ background: '#22c55e', color: '#fff' }}>A</div>
+            <div>
+              <div className="text-sm font-semibold" style={{ color: '#fff' }}>{fromPoint?.name}</div>
+              {fromPoint?.address && <div className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>{fromPoint.address}</div>}
+            </div>
+          </div>
+          <div className="w-0.5 h-4 ml-4 mb-3" style={{ background: 'rgba(255,255,255,0.15)' }} />
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0" style={{ background: '#ef4444', color: '#fff' }}>B</div>
+            <div>
+              <div className="text-sm font-semibold" style={{ color: '#fff' }}>{toPoint?.name}</div>
+              {toPoint?.address && <div className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>{toPoint.address}</div>}
+            </div>
           </div>
         </div>
-        
-        {/* Zoom controls */}
-        <div className="flex gap-2">
-          <button
-            onClick={() => { viewRef.current.zoom = Math.min(10, viewRef.current.zoom * 1.2); draw() }}
-            className="w-10 h-10 rounded-lg flex items-center justify-center text-lg font-bold"
-            style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}
-          >
-            +
+        <button
+          onClick={handleReset}
+          className="px-6 py-3 rounded-xl text-sm font-semibold"
+          style={{ background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.12)' }}
+        >
+          Новый заказ
+        </button>
+      </div>
+    )
+  }
+
+  // ---- CONFIRM screen ----
+  if (step === 'confirm') {
+    return (
+      <div className="min-h-screen flex flex-col font-sans" style={{ background: '#0f0f15', color: '#fff' }}>
+        {/* Header */}
+        <div className="px-4 pt-8 pb-4">
+          <button onClick={() => goToStep('to')} className="flex items-center gap-2 text-sm mb-6" style={{ color: 'rgba(255,255,255,0.5)' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+            Назад
           </button>
+          <h1 className="text-2xl font-bold">Подтверждение</h1>
+          <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.45)' }}>Проверьте маршрут</p>
+        </div>
+
+        {/* Route card */}
+        <div className="px-4 flex-1">
+          <div className="rounded-2xl p-5" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            {/* FROM */}
+            <div className="flex items-start gap-4">
+              <div className="flex flex-col items-center pt-1">
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0" style={{ background: '#22c55e', color: '#fff' }}>A</div>
+                <div className="w-0.5 flex-1 my-2" style={{ background: 'rgba(255,255,255,0.1)', minHeight: 32 }} />
+              </div>
+              <div className="flex-1 pb-4">
+                <div className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>Откуда</div>
+                <div className="font-semibold text-base">{fromPoint?.name}</div>
+                {fromPoint?.address && <div className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>{fromPoint.address}</div>}
+                <div className="text-xs mt-1 px-2 py-0.5 rounded-full inline-block" style={{ background: getCategoryColor(fromPoint?.categoryId || '') + '22', color: getCategoryColor(fromPoint?.categoryId || '') }}>
+                  {categories.find(c => c.id === fromPoint?.categoryId)?.name}
+                </div>
+              </div>
+            </div>
+
+            {/* TO */}
+            <div className="flex items-start gap-4">
+              <div className="flex flex-col items-center">
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0" style={{ background: '#ef4444', color: '#fff' }}>B</div>
+              </div>
+              <div className="flex-1">
+                <div className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>Куда</div>
+                <div className="font-semibold text-base">{toPoint?.name}</div>
+                {toPoint?.address && <div className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>{toPoint.address}</div>}
+                <div className="text-xs mt-1 px-2 py-0.5 rounded-full inline-block" style={{ background: getCategoryColor(toPoint?.categoryId || '') + '22', color: getCategoryColor(toPoint?.categoryId || '') }}>
+                  {categories.find(c => c.id === toPoint?.categoryId)?.name}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Buttons */}
+        <div className="p-4 pb-8">
+          {error && <p className="text-sm text-center mb-3" style={{ color: '#ef4444' }}>{error}</p>}
           <button
-            onClick={() => { viewRef.current = { zoom: 1, panX: 0, panY: 0 }; draw() }}
-            className="w-10 h-10 rounded-lg flex items-center justify-center text-lg"
-            style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}
+            onClick={handleConfirm}
+            disabled={sending}
+            className="w-full py-4 rounded-2xl text-base font-bold transition-opacity"
+            style={{ background: '#5b6ef5', color: '#fff', opacity: sending ? 0.6 : 1 }}
           >
-            ~
-          </button>
-          <button
-            onClick={() => { viewRef.current.zoom = Math.max(0.1, viewRef.current.zoom / 1.2); draw() }}
-            className="w-10 h-10 rounded-lg flex items-center justify-center text-lg font-bold"
-            style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}
-          >
-            -
+            {sending ? 'Отправка...' : 'Подтвердить заказ'}
           </button>
         </div>
       </div>
+    )
+  }
 
-      {/* Bottom panel */}
-      <div 
-        className="absolute bottom-0 left-0 right-0 p-4"
-        style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.95), rgba(0,0,0,0.8), transparent)' }}
-      >
-        {/* Hint */}
-        <div 
-          className="text-center text-sm mb-4"
-          style={{ color: 'rgba(255,255,255,0.7)' }}
-        >
-          {stepInfo[step].subtitle}
-        </div>
+  // ---- FROM / TO selection screen ----
+  const isFrom = step === 'from'
 
-        {/* Route summary */}
-        <div className="flex items-center gap-4 mb-4 justify-center">
-          {/* From */}
-          <div 
-            className="flex items-center gap-2 px-4 py-2 rounded-lg"
-            style={{ 
-              background: fromPoint ? 'rgba(34, 197, 94, 0.2)' : 'rgba(255,255,255,0.05)',
-              border: `1px solid ${fromPoint ? '#22c55e' : 'rgba(255,255,255,0.1)'}` 
-            }}
-          >
-            <div 
-              className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
-              style={{ background: '#22c55e', color: '#fff' }}
-            >
-              A
-            </div>
-            <span style={{ color: fromPoint ? '#fff' : 'rgba(255,255,255,0.4)' }}>
-              {fromPoint ? `${Math.round(fromPoint.x)}, ${Math.round(fromPoint.y)}` : 'Не выбрано'}
-            </span>
+  return (
+    <div className="min-h-screen flex flex-col font-sans" style={{ background: '#0f0f15', color: '#fff' }}>
+      {/* Header */}
+      <div className="px-4 pt-8 pb-4 flex-shrink-0">
+        {step === 'to' && (
+          <button onClick={() => goToStep('from')} className="flex items-center gap-2 text-sm mb-4" style={{ color: 'rgba(255,255,255,0.5)' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+            Назад
+          </button>
+        )}
+
+        {/* Route progress bar */}
+        <div className="flex items-center gap-3 mb-5">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: '#22c55e', color: '#fff' }}>A</div>
+            <span className="text-sm font-medium" style={{ color: isFrom ? '#fff' : 'rgba(255,255,255,0.4)' }}>Откуда</span>
           </div>
-
-          {/* Arrow */}
-          <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 20 }}>→</div>
-
-          {/* To */}
-          <div 
-            className="flex items-center gap-2 px-4 py-2 rounded-lg"
-            style={{ 
-              background: toPoint ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255,255,255,0.05)',
-              border: `1px solid ${toPoint ? '#ef4444' : 'rgba(255,255,255,0.1)'}` 
-            }}
-          >
-            <div 
-              className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
-              style={{ background: '#ef4444', color: '#fff' }}
-            >
-              B
-            </div>
-            <span style={{ color: toPoint ? '#fff' : 'rgba(255,255,255,0.4)' }}>
-              {toPoint ? `${Math.round(toPoint.x)}, ${Math.round(toPoint.y)}` : 'Не выбрано'}
-            </span>
+          <div className="flex-1 h-0.5 rounded" style={{ background: 'rgba(255,255,255,0.1)' }}>
+            <div className="h-full rounded transition-all" style={{ background: '#5b6ef5', width: isFrom ? '0%' : '100%' }} />
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: isFrom ? 'rgba(239,68,68,0.2)' : '#ef4444', color: isFrom ? '#ef4444' : '#fff', border: isFrom ? '2px solid #ef4444' : 'none' }}>B</div>
+            <span className="text-sm font-medium" style={{ color: isFrom ? 'rgba(255,255,255,0.35)' : '#fff' }}>Куда</span>
           </div>
         </div>
 
-        {/* Action buttons */}
-        <div className="flex gap-3 justify-center max-w-md mx-auto">
-          {step !== 'done' && (
-            <button
-              onClick={handleReset}
-              className="px-6 py-3 rounded-lg text-sm font-semibold transition-all"
-              style={{ 
-                background: 'rgba(255,255,255,0.1)', 
-                color: '#fff',
-                border: '1px solid rgba(255,255,255,0.2)'
-              }}
-            >
-              Сбросить
-            </button>
-          )}
-          
-          {step === 'confirm' && (
-            <button
-              onClick={handleConfirm}
-              disabled={status === 'sending'}
-              className="flex-1 px-6 py-3 rounded-lg text-sm font-semibold transition-all"
-              style={{ 
-                background: status === 'sending' ? 'rgba(124, 140, 255, 0.5)' : '#7c8cff', 
-                color: '#fff',
-                opacity: status === 'sending' ? 0.7 : 1
-              }}
-            >
-              {status === 'sending' ? 'Отправка...' : 'Подтвердить маршрут'}
-            </button>
-          )}
-          
-          {step === 'done' && (
-            <div 
-              className="flex-1 px-6 py-3 rounded-lg text-sm font-semibold text-center"
-              style={{ background: 'rgba(34, 197, 94, 0.2)', color: '#22c55e', border: '1px solid #22c55e' }}
-            >
-              Маршрут отправлен в диспетчерскую
+        {/* Selected FROM when on TO step */}
+        {step === 'to' && fromPoint && (
+          <div className="flex items-center gap-3 px-4 py-3 rounded-xl mb-4" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
+            <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ background: '#22c55e', color: '#fff' }}>A</div>
+            <div>
+              <div className="text-xs" style={{ color: '#22c55e' }}>Откуда выбрано</div>
+              <div className="text-sm font-semibold">{fromPoint.name}</div>
             </div>
-          )}
-        </div>
-
-        {/* Error message */}
-        {status === 'error' && (
-          <div className="text-center text-sm mt-2" style={{ color: '#ef4444' }}>
-            {errorMsg}
           </div>
         )}
+
+        <h2 className="text-xl font-bold">
+          {isFrom ? 'Выберите откуда' : 'Выберите куда'}
+        </h2>
+        <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
+          {isFrom ? 'Точка отправления' : 'Точка назначения'}
+        </p>
       </div>
 
-      {/* Loading overlay */}
-      {!mapLoaded && (
-        <div 
-          className="absolute inset-0 flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.8)' }}
-        >
-          <div className="text-center">
-            <div 
-              className="w-10 h-10 border-3 rounded-full animate-spin mx-auto mb-3"
-              style={{ borderColor: '#7c8cff transparent transparent transparent', borderWidth: 3 }}
-            />
-            <div style={{ color: 'rgba(255,255,255,0.6)' }}>Загрузка карты...</div>
+      {/* Loading */}
+      {loading && (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>Загрузка...</div>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && points.length === 0 && (
+        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
+          <div className="text-4xl mb-4">🗺️</div>
+          <div className="text-base font-semibold mb-2">Точки не добавлены</div>
+          <div className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>
+            Администратор должен добавить точки через редактор map-editor.html
           </div>
         </div>
       )}
 
-      {/* No map warning */}
-      {mapLoaded && !mapImgRef.current && (
-        <div 
-          className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center p-6 rounded-xl"
-          style={{ background: 'rgba(0,0,0,0.9)', border: '1px solid rgba(255,255,255,0.1)', maxWidth: 400 }}
-        >
-          <div className="text-lg font-semibold mb-2" style={{ color: '#fff' }}>
-            Карта не загружена
+      {!loading && points.length > 0 && (
+        <>
+          {/* Category filter */}
+          {categories.length > 0 && (
+            <div className="px-4 mb-3 flex-shrink-0">
+              <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                <button
+                  onClick={() => setSelectedCategory(null)}
+                  className="flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all"
+                  style={{
+                    background: selectedCategory === null ? '#5b6ef5' : 'rgba(255,255,255,0.07)',
+                    color: selectedCategory === null ? '#fff' : 'rgba(255,255,255,0.6)',
+                    border: selectedCategory === null ? 'none' : '1px solid rgba(255,255,255,0.1)',
+                  }}
+                >
+                  Все
+                </button>
+                {categories.map(cat => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setSelectedCategory(cat.id === selectedCategory ? null : cat.id)}
+                    className="flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all"
+                    style={{
+                      background: selectedCategory === cat.id ? cat.color + '33' : 'rgba(255,255,255,0.07)',
+                      color: selectedCategory === cat.id ? cat.color : 'rgba(255,255,255,0.6)',
+                      border: `1px solid ${selectedCategory === cat.id ? cat.color + '66' : 'rgba(255,255,255,0.1)'}`,
+                    }}
+                  >
+                    {cat.icon && <span>{cat.icon}</span>}
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Points list */}
+          <div className="flex-1 overflow-y-auto px-4 pb-8">
+            {filteredPoints.length === 0 ? (
+              <div className="text-center py-12 text-sm" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                Нет точек в этой категории
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {filteredPoints.map(pt => {
+                  const cat = categories.find(c => c.id === pt.categoryId)
+                  const isSelected = (isFrom ? fromPoint?.id : toPoint?.id) === pt.id
+                  return (
+                    <button
+                      key={pt.id}
+                      onClick={() => handleSelectPoint(pt)}
+                      className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl text-left transition-all"
+                      style={{
+                        background: isSelected ? '#5b6ef522' : 'rgba(255,255,255,0.04)',
+                        border: `1px solid ${isSelected ? '#5b6ef5' : 'rgba(255,255,255,0.07)'}`,
+                      }}
+                    >
+                      {/* Color dot */}
+                      <div
+                        className="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
+                        style={{ background: (cat?.color || '#6b7280') + '22' }}
+                      >
+                        {cat?.icon || '📍'}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-sm leading-tight truncate" style={{ color: '#fff' }}>{pt.name}</div>
+                        {pt.address && (
+                          <div className="text-xs mt-0.5 truncate" style={{ color: 'rgba(255,255,255,0.4)' }}>{pt.address}</div>
+                        )}
+                        {cat && (
+                          <div className="text-xs mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: cat.color + '18', color: cat.color }}>
+                            {cat.name}
+                          </div>
+                        )}
+                      </div>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
-          <div className="text-sm" style={{ color: 'rgba(255,255,255,0.6)' }}>
-            Администратор должен загрузить карту через редактор map-editor.html
-          </div>
-        </div>
+        </>
       )}
     </div>
   )
