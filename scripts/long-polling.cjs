@@ -1299,7 +1299,7 @@ async function handleGroup1DM(event) {
     if (adminResult4) return;
   }
 
-  // Default — нер��с��ознанный текст, показываем меню
+  // Default — нер��с����ознанный текст, показываем меню
   await showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role);
 }
 
@@ -1333,7 +1333,7 @@ async function showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role) {
 // ─────────────────────────── VEHICLE MANAGEMENT ───────────────
 async function showVehicleMenu(uid, peerId, profile) {
   const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
-  const text = `Автоп����р��:\n\nЛичные авто:\n${(profile.vehicles || []).map(v => `• ${v.name}${v.brandColor ? ' [фирм.]' : ''}`).join('\n') || '(нет)'}\n\nАвто организации:\n${(profile.orgVehicles || []).map(v => `• ${v.name}`).join('\n') || '(нет)'}`;
+  const text = `Авт��п����р��:\n\nЛичные авто:\n${(profile.vehicles || []).map(v => `• ${v.name}${v.brandColor ? ' [фирм.]' : ''}`).join('\n') || '(нет)'}\n\nАвто организации:\n${(profile.orgVehicles || []).map(v => `• ${v.name}`).join('\n') || '(нет)'}`;
   await sendMessage(peerId, text, {
     keyboard: msgKb([
       [{ label: 'Добавить личное авто' }, { label: 'Взять авто организации' }],
@@ -1889,7 +1889,7 @@ async function handleAdminTaxiPoints(uid, peerId, text, event) {
     const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
     if (!Array.isArray(tp.categories)) tp.categories = [];
     if (!tp.categories.length) {
-      await sendMessage(peerId, 'Сначала создайте хотя бы одну категорию.', { keyboard: msgKb([[{ label: 'Добавить категорию точек', color: 'positive' }]]) }, 1);
+      await sendMessage(peerId, 'Сначала создайте хотя бы одну категори��.', { keyboard: msgKb([[{ label: 'Добавить категорию точек', color: 'positive' }]]) }, 1);
       return true;
     }
     sess.step = 'tp_add_point_cat'; storage.adminSessions.set(uid, sess);
@@ -2003,7 +2003,7 @@ async function handleAdminTaxiPoints(uid, peerId, text, event) {
   return false;
 }
 
-// ─────────────────────────── TAXI: GROUP 3 DMs ────────────────
+// ─────────────────────────── TAXI: GROUP 3 DMs ───────────��────
 const TAXI_STEP = {
   MAIN:                 'taxi_main',
   ORDER_NICK:           'taxi_nick',
@@ -2218,16 +2218,8 @@ async function handleTaxiDM(event) {
   }
 
   if (sess.step === TAXI_STEP.MAIN) return; // ignore unknown at main
+}
 
-  // ── Nick ───────────────────────────────────────────────────
-  if (sess.step === TAXI_STEP.ORDER_NICK) {
-    if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; storage.clientSessions.set('taxi_'+uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
-    sess.data.nick = text; sess.step = TAXI_STEP.ORDER_PASSENGERS;
-    storage.clientSessions.set('taxi_'+uid, sess);
-    await sendMessage(peerId, 'Добавить попутчиков? (до 2 ников через запятую или «Пропустить»):',
-      { keyboard: msgKb([[{ label: 'Пропустить', color: 'secondary' }], [{ label: 'Отмена', color: 'negative' }]]) }, 3);
-    return;
-  }
 
   // ── Passengers ─────────────────────────────────────────────
   if (sess.step === TAXI_STEP.ORDER_PASSENGERS) {
