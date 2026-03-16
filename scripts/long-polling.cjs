@@ -708,7 +708,7 @@ async function handleDeliveryDM(event) {
     }
     if (text === 'Оформить заказ') {
       if (!sess.data.basket || sess.data.basket.length === 0) {
-        await sendMessage(peerId, 'Корзина пуста. Добавьте товары.', {}, 2);
+        await sendMessage(peerId, 'Корзина пуста. ��обавьте товары.', {}, 2);
         return;
       }
       sess.step = DEL_STEP.CHECKOUT_NICK;
@@ -1215,7 +1215,7 @@ async function handleGroup1DM(event) {
     sess.step = STAFF_STEP.NONE;
     storage.staffSessions.set(uid, sess);
     await sendMessage(peerId,
-      `Профиль создан!\nНик: ${sess.data.nick}\nБанк. счёт: ${sess.data.bank}\n\nТеперь доба��ьте транспортное средство, чтобы принимать заказы.`,
+      `Пр��филь создан!\nНик: ${sess.data.nick}\nБанк. счёт: ${sess.data.bank}\n\nТеперь доба��ьте транспортное средство, чтобы принимать заказы.`,
       {
         keyboard: msgKb([
           [{ label: 'Автопарк', color: 'positive' }],
@@ -2076,7 +2076,7 @@ async function handleAdminTaxiPoints(uid, peerId, text, event) {
   return false;
 }
 
-// ─────────────────────────── TAXI: GROUP 3 DMs ───────────��────
+// ───────────────────────��─── TAXI: GROUP 3 DMs ───────────��────
 const TAXI_STEP = {
   MAIN: 'taxi_main',
   ORDER_NICK: 'taxi_nick',
@@ -2275,7 +2275,7 @@ async function handleTaxiDM(event) {
     await sendMessage(peerId, 'Для трудоустройства обратитесь к администратору.', { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
     return;
   }
-  if (text === 'Частые вопросы') {
+  if (text === 'Час��ые вопросы') {
     await sendMessage(peerId,
       'FAQ такси:\n\n— Как рассчитывается цена?\nПо расстоянию между точками на карте с учётом часа пик (18–22 МСК ×1.3).\n\n— Можно добавить попутчика?\nДа, до 2 попутчиков.\n\n— Комиссия за оплату?\nНаличные — 0%, счёт телефона — 7%, банковский счёт — 5%.',
       { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
@@ -2513,8 +2513,9 @@ async function handleTaxiDM(event) {
       return;
     }
   }
+}
 
-  async function showTaxiConfirm(peerId, uid, sess, groupKey) {
+async function showTaxiConfirm(peerId, uid, sess, groupKey) {
     const passText = sess.data.passengers?.length ? `\nПопутчики: ${sess.data.passengers.join(', ')}` : '';
     const payText = sess.data.payment.type === 'cash' ? 'Наличными' : sess.data.payment.type === 'phone' ? 'Счёт телефона' : 'Банковский счёт';
     const promoText = sess.data.promoDesc ? `\nПромокод: ${sess.data.promoDesc}` : '';
@@ -2526,9 +2527,9 @@ async function handleTaxiDM(event) {
           [{ label: 'Отмена', color: 'negative' }],
         ])
       }, groupKey);
-  }
+}
 
-  function calculateTaxiPrice(from, to) {
+function calculateTaxiPrice(from, to) {
     // Use stored price overrides if available
     if (from.priceOverrides && from.priceOverrides[to.id]) return from.priceOverrides[to.id];
     // Coordinate-based straight-line distance calculation
@@ -2573,7 +2574,7 @@ async function handleTaxiDM(event) {
       const cats = tp.categories.map(c => `• ${c.name} (${tp.points.filter(p => p.categoryId === c.id).length} точек)`).join('\n') || '(нет)';
       await sendMessage(peerId,
         `Точки такси:\n\nКатегории:\n${cats}`,
-        { keyboard: msgKb([[{ label: 'Добавить категорию точек' }, { label: '��обавить точку' }], [{ label: 'Удалить точку' }]]) }, 1);
+        { keyboard: msgKb([[{ label: 'Добавить ка��егорию точек' }, { label: '��обавить точку' }], [{ label: 'Удалить точку' }]]) }, 1);
       return true;
     }
 
@@ -2926,7 +2927,7 @@ async function handleTaxiDM(event) {
       return `• ${c.nick} — ${total}р. (счёт: ${c.bank})${c.delivery ? `\n  Доставка: ${c.delivery}р.` : ''}${c.taxi ? `\n  Такси: ${c.taxi}р.` : ''}`;
     }).join('\n') || '(нет завершённых заказов)';
 
-    const text = `Ежедневный отчёт (${formatDateMSK()}):\n\nЗаказы доставки: ${dayDelivery.length}\nЗаказы такси: ${dayTaxi.length}\n\nВыплаты курьерам:\n${payoutLines}`;
+    const text = `Ежедневный ��тчёт (${formatDateMSK()}):\n\nЗаказы доставки: ${dayDelivery.length}\nЗаказы такси: ${dayTaxi.length}\n\nВыплаты курьерам:\n${payoutLines}`;
     const keyboard = kb([[{ label: 'Обработано', color: 'positive', payload: { action: 'report_processed', date: formatDateMSK() } }]]);
 
     await sendMessage(CHATS.rukovodstvo, text, { keyboard }, 1);
@@ -3792,4 +3793,3 @@ async function handleTaxiDM(event) {
       console.error(e.stack);
       process.exit(1);
     });
-}
