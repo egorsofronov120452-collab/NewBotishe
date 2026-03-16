@@ -3728,3 +3728,4 @@ async function handleTaxiDM(event) {
       console.error('[Bot] Fatal:', e.message);
       process.exit(1);
     });
+}
