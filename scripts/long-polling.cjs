@@ -900,7 +900,7 @@ function getOnlineCouriers(type) {
     const groups = profile.groups || [];
     const inDelivery = groups.includes('delivery');
     const inTaxi     = groups.includes('taxi');
-    // Если groups пуст — считаем курьера принадлежащим delivery по умолчанию
+    // Если groups пу��т — считаем курьера принадлежащим delivery по умолчанию
     const effectiveDelivery = inDelivery || (!inTaxi && groups.length === 0);
     if (type === 'delivery' && !effectiveDelivery) return;
     if (type === 'taxi'     && !inTaxi)            return;
@@ -1299,7 +1299,7 @@ async function handleGroup1DM(event) {
     if (adminResult4) return;
   }
 
-  // Default — нер��с����ознанный текст, показываем меню
+  // Default — нер����с����ознанный текст, показываем меню
   await showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role);
 }
 
@@ -1333,7 +1333,7 @@ async function showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role) {
 // ─────────────────────────── VEHICLE MANAGEMENT ───────────────
 async function showVehicleMenu(uid, peerId, profile) {
   const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
-  const text = `Авт��п����р��:\n\nЛичные авто:\n${(profile.vehicles || []).map(v => `• ${v.name}${v.brandColor ? ' [фирм.]' : ''}`).join('\n') || '(нет)'}\n\nАвто организации:\n${(profile.orgVehicles || []).map(v => `• ${v.name}`).join('\n') || '(нет)'}`;
+  const text = `��вт��п����р��:\n\nЛичные авто:\n${(profile.vehicles || []).map(v => `• ${v.name}${v.brandColor ? ' [фирм.]' : ''}`).join('\n') || '(нет)'}\n\nАвто организации:\n${(profile.orgVehicles || []).map(v => `• ${v.name}`).join('\n') || '(нет)'}`;
   await sendMessage(peerId, text, {
     keyboard: msgKb([
       [{ label: 'Добавить личное авто' }, { label: 'Взять авто организации' }],
@@ -1471,7 +1471,7 @@ async function handleStaffVehicleAdd(uid, peerId, text, event) {
     profile.orgVehicles.push({ ...veh });
     writeJSON(STAFF_FILE, staff);
     sess.step = null; storage.staffSessions.set(uid, sess);
-    await sendMessage(peerId, `Авто организации «${veh.name}» добавлено.`, {}, 1);
+    await sendMessage(peerId, `Авто организации «${veh.name}» добавл��но.`, {}, 1);
     return true;
   }
 
@@ -2204,16 +2204,38 @@ async function handleTaxiDM(event) {
   }
   if (text === 'Частые вопросы') {
     await sendMessage(peerId,
-      'FAQ такси:\n\n— Как рассчитывается цена?\nПо расстоянию между точками на карте с учётом часа пик (18–22 МСК ×1.3).\n\n— Можно добавить попутчика?\nДа, до 2 попутчиков.\n\n— Комиссия за оплату?\nНаличные — 0%, счёт теле��она — 7%, банковский счёт — 5%.',
+      'FAQ такси:\n\n— Как рассчитывается цена?\nПо расстоянию между точками на карте с учётом часа пик (18–22 МСК ×1.3).\n\n— Можно добавить попутчика?\nДа, до 2 попутчиков.\n\n— Ком��ссия за оплату?\nНаличные — 0%, счёт теле��она — 7%, банковский счёт — 5%.',
       { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
     return;
   }
 
-  // ── Start order — send Mini App link ───────────────────────
+  // ── Start order — send open_link button ────────────────────
   if (text === 'Заказать такси') {
+    const orderUrl = `${APP_URL}/taxi?uid=${uid}`;
     await sendMessage(peerId,
-      `Для заказа такси откройте мини-приложение:\n\n${MINI_APP_URL}?uid=${uid}\n\nВы можете нажать на ссылку или скопировать её в браузер.`,
-      { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
+      `Нажмите кнопку ниже, чтобы открыть форму заказа такси:`,
+      {
+        keyboard: JSON.stringify({
+          one_time: false,
+          buttons: [
+            [
+              {
+                action: {
+                  type: 'open_link',
+                  label: 'Открыть форму заказа',
+                  link: orderUrl,
+                },
+              },
+            ],
+            [
+              {
+                action: { type: 'text', label: 'Главное меню', payload: JSON.stringify('Главное меню') },
+                color: 'secondary',
+              },
+            ],
+          ],
+        }),
+      }, 3);
     return;
   }
 
@@ -2518,7 +2540,7 @@ async function handleTaxiPointAdmin(uid, peerId, text, event) {
   }
   if (step === 'taxi_pt_name') {
     sess.data.ptName = text; sess.step = 'taxi_pt_price'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите базовую цену ��т этой точки (в рублях, для ориентира):', {}, 1);
+    await sendMessage(peerId, 'Введите базовую цену ��т этой точки (в ру��лях, для ориентира):', {}, 1);
     return true;
   }
   if (step === 'taxi_pt_price') {
@@ -3150,7 +3172,7 @@ async function handleChatCommand(event, groupKey) {
     }
 
     const kickedCount = kickedFrom.length;
-    const scopeLabel  = scopeArg === 'все' ? 'всех чатов' : scopeArg === 'доставка' ? 'чатов доставки' : scopeArg === 'такси' ? 'чатов такси' : 'чата';
+    const scopeLabel  = scopeArg === 'все' ? 'всех чатов' : scopeArg === 'доставка' ? 'чатов доставки' : scopeArg === 'такси' ? 'чатов такси' : 'чат��';
     const resultMsg   = kickedCount > 0
       ? `${targetName} исключён из ${kickedCount} ${scopeLabel}. Причина: ${reasonArg}`
       : `Не удалось исключить ${targetName} (возможно, не участник или нет прав)`;
@@ -3352,7 +3374,7 @@ async function handleCallback(event, groupKey) {
     // Notify client
     await sendMessage(order.clientId,
       `Заказ готов! ${order.type === 'taxi' ? 'Водитель' : 'Курьер'} ${order.courierNick} едет к вам.`,
-      { keyboard: msgKb([[{ label: 'Статус заказа' }], [{ label: 'Ссылка на курьера' }]]) }, gKey);
+      { keyboard: msgKb([[{ label: 'Статус заказа' }], [{ label: 'Ссылка на курье��а' }]]) }, gKey);
     return;
   }
 
