@@ -350,7 +350,7 @@ function isAdmin(uid, peerId) { return hasPermission(uid, peerId, ['rs']); }
 // ─────────────────────────── CATALOGUE HELPERS ────────────────
 function loadCatalogue() {
   const cat = readJSON(CATALOGUE_FILE, { categories: [], items: [], sets: [] });
-  // Гарантируем что все поля существуют (защита от п����������вреждённого файла)
+  // Гарантируем что все поля существуют (защита от п������������вреждённого файла)
   if (!Array.isArray(cat.categories)) cat.categories = [];
   if (!Array.isArray(cat.items)) cat.items = [];
   if (!Array.isArray(cat.sets)) cat.sets = [];
@@ -1009,7 +1009,7 @@ async function buildTaxiDriverScreen(uid, order) {
     ? `\nПопутчики: ${order.passengers.join(', ')}`
     : '';
   const payText = order.payment?.type === 'cash' ? 'Наличными'
-    : order.payment?.type === 'phone' ? 'Счёт телефона' : 'Банковс��ий счёт';
+    : order.payment?.type === 'phone' ? 'Счёт телефона' : 'Б��нковс��ий счёт';
   const text = `Такси ${getOrderNumDisplay(order)}\n\nКлиент: ${order.nick}${passText}\nОткуда: ${order.from?.name || '—'}\nКуда: ${order.to?.name || '—'}\nСумма: ${order.finalPrice}р. (${payText})`;
 
   const buttons = [
@@ -1348,7 +1348,7 @@ async function showVehicleMenu(uid, peerId, profile) {
   const text = `��вт��п����р��:\n\nЛичные авто:\n${(profile.vehicles || []).map(v => `• ${v.name}${v.brandColor ? ' [фирм.]' : ''}`).join('\n') || '(нет)'}\n\nАвто организации:\n${(profile.orgVehicles || []).map(v => `• ${v.name}`).join('\n') || '(нет)'}`;
   await sendMessage(peerId, text, {
     keyboard: msgKb([
-      [{ label: 'Добавить личное авто' }, { label: 'Взять ав��о организации' }],
+      [{ label: 'Добавить личное ��вто' }, { label: 'Взять ав��о организации' }],
       [{ label: 'Удалить авто' }],
       [{ label: 'Мой профиль', color: 'secondary' }],
     ])
@@ -2457,9 +2457,9 @@ async function handleTaxiDM(event) {
       if (text === 'Главное меню') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_' + uid, sess); return; }
       return;
     }
-}
+  }
 
-async function showTaxiConfirm(peerId, uid, sess, groupKey) {
+  async function showTaxiConfirm(peerId, uid, sess, groupKey) {
     const passText = sess.data.passengers?.length ? `\nПопутчики: ${sess.data.passengers.join(', ')}` : '';
     const payText = sess.data.payment.type === 'cash' ? 'Наличными' : sess.data.payment.type === 'phone' ? 'Счёт телефона' : 'Банковский счёт';
     const promoText = sess.data.promoDesc ? `\nПромокод: ${sess.data.promoDesc}` : '';
