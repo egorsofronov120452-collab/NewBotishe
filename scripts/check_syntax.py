@@ -1,4 +1,15 @@
-path = '/vercel/share/v0-project/scripts/long-polling.cjs'
+import os, glob
+# Find the file wherever it is
+matches = glob.glob('/*/long-polling.cjs') + glob.glob('/*/*/long-polling.cjs') + glob.glob('/*/*/*/long-polling.cjs')
+print("Found candidates:", matches)
+if not matches:
+    import subprocess
+    result = subprocess.run(['find', '/', '-name', 'long-polling.cjs', '-maxdepth', '8'], capture_output=True, text=True, timeout=10)
+    print("find result:", result.stdout)
+    raise SystemExit
+
+path = matches[0]
+print("Using:", path)
 with open(path, 'r', encoding='utf-8', errors='replace') as f:
     src = f.read()
 
