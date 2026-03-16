@@ -3723,4 +3723,8 @@ async function handleTaxiDM(event) {
     await Promise.all(pollers);
   }
 
-  main().catch(e => { console.error('[Bot] Fatal:', e.message); process.exit(1); }
+  main()
+    .catch(e => {
+      console.error('[Bot] Fatal:', e.message);
+      process.exit(1);
+    });
