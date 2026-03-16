@@ -350,7 +350,7 @@ function isAdmin(uid, peerId) { return hasPermission(uid, peerId, ['rs']); }
 // ─────────────────────────── CATALOGUE HELPERS ────────────────
 function loadCatalogue() {
   const cat = readJSON(CATALOGUE_FILE, { categories: [], items: [], sets: [] });
-  // Гарантируем что все поля существуют (защита от повреждённого файла)
+  // Гарантируем что все поля существуют (защита от п��вреждённого файла)
   if (!Array.isArray(cat.categories)) cat.categories = [];
   if (!Array.isArray(cat.items)) cat.items = [];
   if (!Array.isArray(cat.sets)) cat.sets = [];
@@ -1014,7 +1014,7 @@ async function buildTaxiDriverScreen(uid, order) {
 
   const buttons = [
     [{ label: 'Прибыл к клиенту', color: 'positive', payload: { action: 'courier_arrived', orderId: order.id } }],
-    [{ label: 'Платное ожидание', color: 'secondary', payload: { action: 'taxi_paid_waiting', orderId: order.id } }],
+    [{ label: 'Платно�� ожидание', color: 'secondary', payload: { action: 'taxi_paid_waiting', orderId: order.id } }],
     [{ label: 'Завершить поездку', color: 'positive', payload: { action: 'finish_order', orderId: order.id } }],
     [{ label: `Связь с клиентом: vk.me/id${order.clientId}`, color: 'secondary', payload: { action: 'noop' } }],
   ];
@@ -1329,7 +1329,7 @@ async function showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role) {
   }
   if (isRs) {
     rows.push([{ label: 'Управление промокодами', color: 'primary' }]);
-    rows.push([{ label: 'Управление авто', color: 'primary' }]);
+    rows.push([{ label: '��правление авто', color: 'primary' }]);
     rows.push([{ label: 'Управление точками такси', color: 'primary' }]);
   }
 
@@ -1839,7 +1839,7 @@ async function handleAdminPromosSession(uid, peerId, text, event, role) {
     }
     writeJSON(PROMOS_FILE, promos);
     sess.step = null; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, found ? `Промокод «${code}» ${sess.data.promoAction === 'delete' ? 'удалён' : 'деактивирован'}.` : 'Промокод не найден.', {}, 1);
+    await sendMessage(peerId, found ? `Промокод «${code}» ${sess.data.promoAction === 'delete' ? 'удалён' : 'де��ктивирован'}.` : 'Промокод не найден.', {}, 1);
     return true;
   }
 
@@ -2258,7 +2258,6 @@ async function handleTaxiDM(event) {
   }
 
   if (sess.step === TAXI_STEP.MAIN) return; // ignore unknown at main
-}
 
 
 // ── Passengers ─────────────────────────────────────────────
@@ -2445,7 +2444,6 @@ if (sess.step === TAXI_STEP.ORDER_CONFIRM) {
       { keyboard: msgKb([[{ label: 'Статус заказа' }], [{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
     return;
   }
-  return;
 
   // ── Waiting / Active ───────────────────────────────────────
   if (sess.step === TAXI_STEP.WAITING || sess.step === TAXI_STEP.ACTIVE) {
@@ -2520,7 +2518,7 @@ async function handleTaxiPointAdmin(uid, peerId, text, event) {
     const cats = tp.categories.map(c => `• ${c.name} (${tp.points.filter(p => p.categoryId === c.id).length} точек)`).join('\n') || '(нет)';
     await sendMessage(peerId,
       `Точки такси:\n\nКатегории:\n${cats}`,
-      { keyboard: msgKb([[{ label: 'Добавить категорию точек' }, { label: 'Добавить точку' }], [{ label: 'Удалить точку' }]]) }, 1);
+      { keyboard: msgKb([[{ label: 'Добавить категорию точек' }, { label: '��обавить точку' }], [{ label: 'Удалить точку' }]]) }, 1);
     return true;
   }
 
