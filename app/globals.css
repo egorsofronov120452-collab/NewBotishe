@@ -4,13 +4,16 @@
   --font-sans: 'Inter', 'Inter Fallback';
 
   --color-background: #0f1117;
-  --color-surface:    #1a1d2e;
-  --color-border:     #2d3148;
-  --color-foreground: #e2e8f0;
+  --color-surface:    #181b26;
+  --color-surface2:   #21253a;
+  --color-border:     #2c3050;
+  --color-foreground: #e8eaf6;
   --color-muted:      #6b7280;
-  --color-accent:     #7c8cff;
+  --color-accent:     #f5c518;
+  --color-accent2:    #e6a800;
   --color-positive:   #22c55e;
   --color-negative:   #ef4444;
+  --color-warning:    #f59e0b;
 
   --radius: 0.5rem;
 }
@@ -31,3 +34,18 @@ body {
 ::-webkit-scrollbar        { width: 6px; }
 ::-webkit-scrollbar-track  { background: var(--color-background); }
 ::-webkit-scrollbar-thumb  { background: var(--color-border); border-radius: 3px; }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+.settings-input {
+  width: 100px;
+  background: var(--color-surface2);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  color: var(--color-foreground);
+  font-size: 0.875rem;
+  outline: none;
+}
+.settings-input:focus { border-color: var(--color-accent); }

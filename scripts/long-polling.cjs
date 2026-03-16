@@ -1299,7 +1299,7 @@ async function handleGroup1DM(event) {
     if (adminResult4) return;
   }
 
-  // Default — нер��спознанный текст, показываем меню
+  // Default — нер��с����ознанный текст, показываем меню
   await showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role);
 }
 
@@ -1333,7 +1333,7 @@ async function showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role) {
 // ─────────────────────────── VEHICLE MANAGEMENT ───────────────
 async function showVehicleMenu(uid, peerId, profile) {
   const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
-  const text = `Автопар��:\n\nЛичные авто:\n${(profile.vehicles || []).map(v => `• ${v.name}${v.brandColor ? ' [фирм.]' : ''}`).join('\n') || '(нет)'}\n\nАвто организации:\n${(profile.orgVehicles || []).map(v => `• ${v.name}`).join('\n') || '(нет)'}`;
+  const text = `Авт��п����р��:\n\nЛичные авто:\n${(profile.vehicles || []).map(v => `• ${v.name}${v.brandColor ? ' [фирм.]' : ''}`).join('\n') || '(нет)'}\n\nАвто организации:\n${(profile.orgVehicles || []).map(v => `• ${v.name}`).join('\n') || '(нет)'}`;
   await sendMessage(peerId, text, {
     keyboard: msgKb([
       [{ label: 'Добавить личное авто' }, { label: 'Взять авто организации' }],
@@ -1889,13 +1889,13 @@ async function handleAdminTaxiPoints(uid, peerId, text, event) {
     const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
     if (!Array.isArray(tp.categories)) tp.categories = [];
     if (!tp.categories.length) {
-      await sendMessage(peerId, 'Сначала создайте хотя бы одну категорию.', { keyboard: msgKb([[{ label: 'Добавить категорию точек', color: 'positive' }]]) }, 1);
+      await sendMessage(peerId, 'Сначала создайте хотя бы одну категори��.', { keyboard: msgKb([[{ label: 'Добавить категорию точек', color: 'positive' }]]) }, 1);
       return true;
     }
     sess.step = 'tp_add_point_cat'; storage.adminSessions.set(uid, sess);
     const rows = tp.categories.map(c => [{ label: c.name }]);
     rows.push([{ label: 'Отмена', color: 'negative' }]);
-    await sendMessage(peerId, 'Выберите категорию для новой точки:', { keyboard: msgKb(rows) }, 1);
+    await sendMessage(peerId, 'Выберите категорию для новой то��ки:', { keyboard: msgKb(rows) }, 1);
     return true;
   }
   if (step === 'tp_add_point_cat') {
@@ -1915,15 +1915,40 @@ async function handleAdminTaxiPoints(uid, peerId, text, event) {
     return true;
   }
   if (step === 'tp_add_point_price') {
-    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', {}, 1); return true; }
+    if (text === '��тмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', {}, 1); return true; }
     const price = parseInt(text);
     if (isNaN(price) || price < 0) { await sendMessage(peerId, 'Введите корректное число (цену).', {}, 1); return true; }
+    sess.data.tpPointPrice = price;
+    sess.step = 'tp_add_point_coords';
+    storage.adminSessions.set(uid, sess);
+    await sendMessage(peerId,
+      `Точка: «${sess.data.tpPointName}» (${price}р.)\n\nВведите координаты точки на карте в формате «X,Y» (целые числа из map-editor.html).\nКоординаты нужны для отображения точки на карте и точного расчёта стоимости по прямой.\n\nИли нажмите «Пропустить» (расчёт будет по базовой цене):`,
+      { keyboard: msgKb([[{ label: 'Пропустить', color: 'secondary' }], [{ label: 'Отмена', color: 'negative' }]]) }, 1);
+    return true;
+  }
+  if (step === 'tp_add_point_coords') {
+    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', {}, 1); return true; }
+    let x, y;
+    if (text !== 'Пропустить') {
+      const parts = text.split(',').map(s => parseInt(s.trim()));
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        x = parts[0]; y = parts[1];
+      } else {
+        await sendMessage(peerId, 'Неверный формат. Введите «X,Y» (например: 450,320) или нажмите «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить', color: 'secondary' }]]) }, 1);
+        return true;
+      }
+    }
     const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
     if (!Array.isArray(tp.points)) tp.points = [];
-    tp.points.push({ id: genId(), categoryId: sess.data.tpCatId, name: sess.data.tpPointName, basePrice: price });
+    const newPoint = { id: genId(), categoryId: sess.data.tpCatId, name: sess.data.tpPointName, basePrice: sess.data.tpPointPrice };
+    if (x !== undefined) { newPoint.x = x; newPoint.y = y; }
+    tp.points.push(newPoint);
     writeJSON(TAXI_POINTS_FILE, tp);
     sess.step = null; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, `Точка «${sess.data.tpPointName}» (${price}р.) добавлена.`, { keyboard: msgKb([[{ label: 'Управление точками такси', color: 'primary' }, { label: 'Добавить точку', color: 'positive' }], [{ label: 'Главное меню', color: 'secondary' }]]) }, 1);
+    const coordInfo = x !== undefined ? ` | коорд: ${x},${y}` : ' | без коорд.';
+    await sendMessage(peerId,
+      `Точка «${sess.data.tpPointName}» (${sess.data.tpPointPrice}р.${coordInfo}) добавлена.`,
+      { keyboard: msgKb([[{ label: 'Управление точками такси', color: 'primary' }, { label: 'Добавить точку', color: 'positive' }], [{ label: 'Главное меню', color: 'secondary' }]]) }, 1);
     return true;
   }
 
@@ -1978,12 +2003,15 @@ async function handleAdminTaxiPoints(uid, peerId, text, event) {
   return false;
 }
 
-// ─────────────────────────── TAXI: GROUP 3 DMs ────────────────
+// ─────────────────────────── TAXI: GROUP 3 DMs ───────────��────
 const TAXI_STEP = {
   MAIN:                 'taxi_main',
   ORDER_NICK:           'taxi_nick',
   ORDER_PASSENGERS:     'taxi_passengers',
-  ORDER_MAP_WAIT:       'taxi_map_wait',   // NEW: waiting for client to pick on map
+  ORDER_FROM_CAT:       'taxi_from_cat',     // select "from" category
+  ORDER_FROM_POINT:     'taxi_from_point',   // select "from" point
+  ORDER_TO_CAT:         'taxi_to_cat',       // select "to" category
+  ORDER_TO_POINT:       'taxi_to_point',     // select "to" point
   ORDER_PROMO:          'taxi_promo',
   ORDER_PAYMENT:        'taxi_payment',
   ORDER_PAYMENT_SCREEN: 'taxi_payment_screen',
@@ -2012,6 +2040,60 @@ function clearTaxiPick(token) {
   writeTaxiPicks(picks);
 }
 
+/** Return taxi points data { categories, points } */
+function readTaxiPoints() {
+  const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
+  if (!Array.isArray(tp.categories)) tp.categories = [];
+  if (!Array.isArray(tp.points))     tp.points = [];
+  return tp;
+}
+
+/** Build a category-select keyboard for "from" or "to" step */
+async function sendCategorySelect(peerId, groupKey, label) {
+  const tp = readTaxiPoints();
+  if (!tp.categories.length) {
+    await sendMessage(peerId,
+      'Точки маршрута ещё не добавлены. Обратитесь к администратору.',
+      { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, groupKey);
+    return false;
+  }
+  const rows = tp.categories.map(c => {
+    const cnt = tp.points.filter(p => p.categoryId === c.id).length;
+    return [{ label: `${c.name} (${cnt})` }];
+  });
+  rows.push([{ label: 'Отмена', color: 'negative' }]);
+  await sendMessage(peerId,
+    `${label}\nВыберите категорию:`,
+    { keyboard: msgKb(rows) }, groupKey);
+  return true;
+}
+
+/** Build a points-select keyboard for chosen category */
+async function sendPointSelect(peerId, groupKey, catName, label, excludeId = null) {
+  const tp = readTaxiPoints();
+  const cat = tp.categories.find(c => c.name === catName);
+  if (!cat) return false;
+  const pts = tp.points.filter(p => p.categoryId === cat.id && p.id !== excludeId);
+  if (!pts.length) {
+    await sendMessage(peerId, 'В этой категории нет доступных точек.', {}, groupKey);
+    return false;
+  }
+  const rows = pts.map(p => [{ label: p.name }]);
+  rows.push([{ label: '← Назад', color: 'secondary' }, { label: 'Отмена', color: 'negative' }]);
+  await sendMessage(peerId,
+    `${label}\nКатегория: ${catName}\nВыберите точку:`,
+    { keyboard: msgKb(rows) }, groupKey);
+  return true;
+}
+function writeTaxiPicks(data) {
+  writeJSON(TAXI_PICKS_FILE, data);
+}
+function clearTaxiPick(token) {
+  const picks = readTaxiPicks();
+  delete picks[token];
+  writeTaxiPicks(picks);
+}
+
 /**
  * Send map-picker link to client.
  * The link opens /taxi-order?token=TOKEN&step=from
@@ -2022,7 +2104,7 @@ async function sendMapPickerLink(peerId, token, groupKey) {
   const url = `${APP_URL}/taxi-order?token=${token}&step=from`;
   console.log(`[Bot] sendMapPickerLink: APP_URL=${APP_URL}, url=${url}`);
   await sendMessage(peerId,
-  `Выберите точки маршрута на карте.\n\nНажмите кнопку ниже — откроется карта. Сначала выберите откуда, затем куда. После выбора вернитесь сюда, бот продолжит автоматически.\n\nСсылка на карту:\n${url}`,
+  `Выберите точки маршрута на карте.\n\nНажмите кнопку ниже — откроется ка��та. Сначала выберите откуда, затем куда. После выбора вернитесь сюда, бот продолжит автоматически.\n\nСсылка на карту:\n${url}`,
     {
       keyboard: msgKb([
         [{ label: 'Открыть карту', color: 'positive' }],
@@ -2096,6 +2178,8 @@ async function handleTaxiDM(event) {
     if (handled) return;
   }
 
+  const MINI_APP_URL = `${APP_URL}/taxi`;
+
   const mainKb = msgKb([
     [{ label: 'Заказать такси', color: 'positive' }],
     [{ label: 'Трудоустройство', color: 'secondary' }, { label: 'Частые вопросы', color: 'secondary' }],
@@ -2120,56 +2204,102 @@ async function handleTaxiDM(event) {
   }
   if (text === 'Частые вопросы') {
     await sendMessage(peerId,
-      'FAQ такси:\n\n— Как рассчитывается цена?\nПо расстоянию между точками на карте с учётом часа пик (18–22 МСК ×1.3).\n\n— Можно добавить попутчика?\nДа, до 2 попутчиков.\n\n— Комиссия за оплату?\nНаличные — 0%, счёт телефона — 7%, банковский счёт — 5%.',
+      'FAQ такси:\n\n— Как рассчитывается цена?\nПо расстоянию между точками на карте с учётом часа пик (18–22 МСК ×1.3).\n\n— Можно добавить попутчика?\nДа, до 2 попутчиков.\n\n— Комиссия за оплату?\nНаличные — 0%, счёт теле��она — 7%, банковский счёт — 5%.',
       { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
     return;
   }
 
-  // ── Start order ────────────────────────────────────────────
+  // ── Start order — send Mini App link ───────────────────────
   if (text === 'Заказать такси') {
-    sess.step = TAXI_STEP.ORDER_NICK; sess.data = {};
-    storage.clientSessions.set('taxi_'+uid, sess);
-    await sendMessage(peerId, 'Введите ваш никнейм:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 3);
+    await sendMessage(peerId,
+      `Для заказа такси откройте мини-приложение:\n\n${MINI_APP_URL}?uid=${uid}\n\nВы можете нажать на ссылку или скопировать её в браузер.`,
+      { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
     return;
   }
 
   if (sess.step === TAXI_STEP.MAIN) return; // ignore unknown at main
+}
 
-  // ── Nick ───────────────────────────────────────────────────
-  if (sess.step === TAXI_STEP.ORDER_NICK) {
-    if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; storage.clientSessions.set('taxi_'+uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
-    sess.data.nick = text; sess.step = TAXI_STEP.ORDER_PASSENGERS;
-    storage.clientSessions.set('taxi_'+uid, sess);
-    await sendMessage(peerId, 'Добавить попутчиков? (до 2 ников через запятую или «Пропустить»):',
-      { keyboard: msgKb([[{ label: 'Пропустить', color: 'secondary' }], [{ label: 'Отмена', color: 'negative' }]]) }, 3);
-    return;
-  }
 
   // ── Passengers ─────────────────────────────────────────────
   if (sess.step === TAXI_STEP.ORDER_PASSENGERS) {
     if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; storage.clientSessions.set('taxi_'+uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
     sess.data.passengers = text === 'Пропустить' ? [] : text.split(',').map(s => s.trim()).slice(0, 2);
 
-    // Generate a unique token for this map session
-    const token = genId();
-    sess.data.mapToken = token;
-    sess.step = TAXI_STEP.ORDER_MAP_WAIT;
+    // Move to from-category selection
+    sess.step = TAXI_STEP.ORDER_FROM_CAT;
     storage.clientSessions.set('taxi_'+uid, sess);
-
-    await sendMapPickerLink(peerId, token, 3);
-    startMapPollLoop(uid, peerId, token, 3);
+    await sendCategorySelect(peerId, 3, 'Шаг 1/2 — Откуда едете?');
     return;
   }
 
-  // ── Map wait (handle "Отмена" while waiting) ───────────────
-  if (sess.step === TAXI_STEP.ORDER_MAP_WAIT) {
-    if (text === 'Отмена') {
-      if (sess.data.mapToken) clearTaxiPick(sess.data.mapToken);
-      sess.step = TAXI_STEP.MAIN; sess.data = {};
+  // ── From: category ─────────────────────────────────────────
+  if (sess.step === TAXI_STEP.ORDER_FROM_CAT) {
+    if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_'+uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
+    const tp = readTaxiPoints();
+    const cat = tp.categories.find(c => `${c.name} (${tp.points.filter(p => p.categoryId === c.id).length})` === text || c.name === text);
+    if (!cat) return;
+    sess.data.fromCatName = cat.name;
+    sess.step = TAXI_STEP.ORDER_FROM_POINT;
+    storage.clientSessions.set('taxi_'+uid, sess);
+    await sendPointSelect(peerId, 3, cat.name, 'Шаг 1/2 — Откуда едете?');
+    return;
+  }
+
+  // ── From: point ────────────────────────────────────────────
+  if (sess.step === TAXI_STEP.ORDER_FROM_POINT) {
+    if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_'+uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
+    if (text === '← Назад') {
+      sess.step = TAXI_STEP.ORDER_FROM_CAT;
       storage.clientSessions.set('taxi_'+uid, sess);
-      await sendMessage(peerId, 'Заказ отменён.', { keyboard: mainKb }, 3);
+      await sendCategorySelect(peerId, 3, 'Шаг 1/2 — Откуда едете?');
+      return;
     }
-    // Everything else is ignored — poll loop handles continuation
+    const tp = readTaxiPoints();
+    const pt = tp.points.find(p => p.name === text);
+    if (!pt) return;
+    sess.data.from = pt;
+    sess.step = TAXI_STEP.ORDER_TO_CAT;
+    storage.clientSessions.set('taxi_'+uid, sess);
+    await sendCategorySelect(peerId, 3, `Шаг 2/2 — Куда едете?\n(Выбрано откуда: ${pt.name})`);
+    return;
+  }
+
+  // ── To: category ───────────────────────────────────────────
+  if (sess.step === TAXI_STEP.ORDER_TO_CAT) {
+    if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_'+uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
+    const tp = readTaxiPoints();
+    const cat = tp.categories.find(c => `${c.name} (${tp.points.filter(p => p.categoryId === c.id).length})` === text || c.name === text);
+    if (!cat) return;
+    sess.data.toCatName = cat.name;
+    sess.step = TAXI_STEP.ORDER_TO_POINT;
+    storage.clientSessions.set('taxi_'+uid, sess);
+    await sendPointSelect(peerId, 3, cat.name, `Шаг 2/2 — Куда едете?`, sess.data.from?.id);
+    return;
+  }
+
+  // ── To: point ──────────────────────────────────────────────
+  if (sess.step === TAXI_STEP.ORDER_TO_POINT) {
+    if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_'+uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
+    if (text === '← Назад') {
+      sess.step = TAXI_STEP.ORDER_TO_CAT;
+      storage.clientSessions.set('taxi_'+uid, sess);
+      await sendCategorySelect(peerId, 3, `Шаг 2/2 — Куда едете?\n(Выбрано откуда: ${sess.data.from?.name})`);
+      return;
+    }
+    const tp = readTaxiPoints();
+    const pt = tp.points.find(p => p.name === text && p.id !== sess.data.from?.id);
+    if (!pt) { await sendMessage(peerId, 'Выберите другую точку.', {}, 3); return; }
+    sess.data.to = pt;
+
+    // Calculate price
+    const price = calculateTaxiPrice(sess.data.from, sess.data.to);
+    sess.data.basePrice = price;
+    sess.step = TAXI_STEP.ORDER_PROMO;
+    storage.clientSessions.set('taxi_'+uid, sess);
+    await sendMessage(peerId,
+      `Маршрут выбран:\nОткуда: ${sess.data.from.name}\nКуда: ${sess.data.to.name}\nПримерная стоимость: ${price}р.\n\nЕсть промокод? Введите или нажмите «Пропустить»:`,
+      { keyboard: msgKb([[{ label: 'Пропустить', color: 'secondary' }], [{ label: 'Отмена', color: 'negative' }]]) }, 3);
     return;
   }
 
@@ -2305,18 +2435,24 @@ async function showTaxiConfirm(peerId, uid, sess, groupKey) {
 }
 
 function calculateTaxiPrice(from, to) {
-  // Use stored distance or default formula
+  // Use stored price overrides if available
   if (from.priceOverrides && from.priceOverrides[to.id]) return from.priceOverrides[to.id];
-  // Simple distance-based: each point has optional coords (x,y from map)
-  if (from.x !== undefined && to.x !== undefined) {
-    const dist = Math.sqrt(Math.pow(from.x - to.x, 2) + Math.pow(from.y - to.y, 2));
-    const base = Math.round(dist * 50); // 50р per unit
-    // Peak hour multiplier (18-22 MSK)
+  // Coordinate-based straight-line distance calculation
+  const fx = from.x !== undefined ? from.x : null;
+  const fy = from.y !== undefined ? from.y : null;
+  const tx = to.x !== undefined ? to.x : null;
+  const ty = to.y !== undefined ? to.y : null;
+  if (fx !== null && tx !== null) {
+    const dist = Math.sqrt(Math.pow(fx - tx, 2) + Math.pow(fy - ty, 2));
+    const base = Math.round(dist * 0.5); // 0.5р per pixel unit
     const hour = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' })).getHours();
     const peak = (hour >= 18 && hour <= 22) ? 1.3 : 1.0;
-    return Math.round(base * peak);
+    return Math.max(50, Math.round(base * peak));
   }
-  return from.defaultPrice || 500;
+  // Fallback to base price average
+  const fp = from.basePrice || from.defaultPrice || 100;
+  const tp2 = to.basePrice || to.defaultPrice || 100;
+  return Math.max(50, Math.round((fp + tp2) / 2));
 }
 
 async function handleTaxiAdminPromos(uid, peerId, text, event) {
@@ -2387,7 +2523,7 @@ async function handleTaxiPointAdmin(uid, peerId, text, event) {
   }
   if (step === 'taxi_pt_price') {
     sess.data.ptPrice = parseInt(text) || 500; sess.step = 'taxi_pt_coords'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите координаты точки на карте в формате «X,Y» (целые числа, смотрите map-editor.html) или «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить' }]]) }, 1);
+    await sendMessage(peerId, 'Введите координаты точки на карте в формате «X,Y» (из map-editor.html) или «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить' }]]) }, 1);
     return true;
   }
   if (step === 'taxi_pt_coords') {
@@ -2397,10 +2533,12 @@ async function handleTaxiPointAdmin(uid, peerId, text, event) {
       if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) { x = parts[0]; y = parts[1]; }
     }
     const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
-    tp.points.push({ id: genId(), name: sess.data.ptName, categoryId: sess.data.ptCatId, defaultPrice: sess.data.ptPrice, x, y });
+    const newPt = { id: genId(), name: sess.data.ptName, categoryId: sess.data.ptCatId, defaultPrice: sess.data.ptPrice };
+    if (x !== undefined) { newPt.x = x; newPt.y = y; }
+    tp.points.push(newPt);
     writeJSON(TAXI_POINTS_FILE, tp);
     sess.step = null; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, `Точка «${sess.data.ptName}» добавлена.`, {}, 1);
+    await sendMessage(peerId, `Точка «${sess.data.ptName}» добавлена${x !== undefined ? ` (коорд: ${x},${y})` : ''}.`, {}, 1);
     return true;
   }
 
@@ -2851,7 +2989,7 @@ async function handleChatCommand(event, groupKey) {
   const isRs   = role === 'rs';
   const isSs   = role === 'ss' || isRs;
 
-  // !пост [доставка|такси] — публикация на стену группы
+  // !пост [��оставка|такси] — публикация на стену группы
   // Если аргумент не указан, определяем по текущему чату
   if (cmd === '!пост') {
     if (!isSs) { await sendMessage(peerId, 'Команда доступна только РС и СС', {}, groupKey); return true; }
@@ -3446,6 +3584,79 @@ async function pollGroup(groupId, token, groupKey, label) {
       } catch (_) {}
     }
   }
+}
+
+// ─────────────────────────── MINI APP DISPATCH POLLER ────────
+// Polls taxi_pending_dispatch.json every 3 sec and sends new taxi orders to dispatch chat
+const TAXI_PENDING_DISPATCH_FILE = path.join(DATA_DIR, 'taxi_pending_dispatch.json');
+
+async function pollPendingTaxiDispatch() {
+  while (true) {
+    try {
+      const pending = readJSON(TAXI_PENDING_DISPATCH_FILE, []);
+      if (Array.isArray(pending) && pending.length > 0) {
+        // Process each order
+        writeJSON(TAXI_PENDING_DISPATCH_FILE, []); // clear immediately to avoid double-send
+        for (const order of pending) {
+          await sendTaxiOrderToDispatch(order);
+          // Also notify the client in VK DM
+          if (order.clientId && order.clientId !== 0) {
+            const orderNum = order.num ? `#${order.num}` : `#${(order.id||'').slice(-6)}`;
+            await sendMessage(order.clientId,
+              `Заказ такси ${orderNum} принят диспетчерской!\n\nОткуда: ${order.from?.name}\nКуда: ${order.to?.name}\nСтоимость: ${order.finalPrice}р.\n\nОжидайте назначения водителя.`,
+              { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[Bot] pollPendingTaxiDispatch error:', e.message);
+    }
+    await new Promise(r => setTimeout(r, 3000));
+  }
+}
+
+async function sendTaxiOrderToDispatch(order) {
+  const orderNum = order.num ? `#${order.num}` : `#${(order.id||'').slice(-6)}`;
+  const passText = order.passengers && order.passengers.length
+    ? `\nПопутчики: ${order.passengers.join(', ')}`
+    : '';
+  const promoText = order.promoDesc ? `\n${order.promoDesc}` : '';
+  const payMap = { cash: 'Наличными', phone: 'Счёт телефона', bank: 'Банк. счёт' };
+  const payText = payMap[order.payment] || order.payment || 'не указана';
+
+  const text = `Новый заказ такси ${orderNum}\n\nНикнейм: ${order.nick}${passText}\nОткуда: ${order.from?.name}\nКуда: ${order.to?.name}\nОплата: ${payText}\nСтоимость: ${order.finalPrice}р.${promoText}`;
+
+  const keyboard = kb([[{ label: `Принять заказ ${orderNum}`, color: 'positive', payload: { action: 'accept_order', orderId: order.id } }]]);
+  const chatId = CHATS.taxiDispetcherskaya;
+  if (!chatId || chatId === 0) { console.error('[Bot] taxiDispatchChatId not configured'); return; }
+
+  // Send snapshot photo if available
+  let attachment = '';
+  if (order.mapSnapshotUrl && order.mapSnapshotUrl.startsWith('data:image')) {
+    try {
+      // Upload to VK via photos.getMessagesUploadServer → upload → photos.saveMessagesPhoto
+      const uploadServerRes = await callVK('photos.getMessagesUploadServer', { peer_id: chatId }, 1);
+      if (uploadServerRes && uploadServerRes.upload_url) {
+        const { FormData, Blob } = await import('node:buffer').then(m => ({ FormData: globalThis.FormData, Blob: globalThis.Blob })).catch(() => ({}));
+        if (FormData && Blob) {
+          const base64Data = order.mapSnapshotUrl.replace(/^data:image\/\w+;base64,/, '');
+          const buf = Buffer.from(base64Data, 'base64');
+          const form = new FormData();
+          form.append('photo', new Blob([buf], { type: 'image/png' }), 'route.png');
+          const upRes = await fetch(uploadServerRes.upload_url, { method: 'POST', body: form });
+          const upData = await upRes.json();
+          if (upData.server && upData.photo && upData.hash) {
+            const saved = await callVK('photos.saveMessagesPhoto', { server: upData.server, photo: upData.photo, hash: upData.hash }, 1);
+            if (saved && saved[0]) attachment = `photo${saved[0].owner_id}_${saved[0].id}`;
+          }
+        }
+      }
+    } catch (e) { console.error('[Bot] sendTaxiOrderToDispatch photo upload error:', e.message); }
+  }
+
+  let msgId = await sendMessage(chatId, text, { keyboard, attachment: attachment || undefined }, 1);
+  if (!msgId) msgId = await sendMessage(chatId, text, { keyboard, attachment: attachment || undefined }, 3);
+  if (msgId) storage.orderMsgIds.set(order.id, { dispatchMsgId: msgId, chatId });
 }
 
 // ─────────────────────────── ENTRYPOINT ──────────────────────
