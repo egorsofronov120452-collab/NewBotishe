@@ -1299,7 +1299,7 @@ async function handleGroup1DM(event) {
     if (adminResult4) return;
   }
 
-  // Default — нер��спознанный текст, показываем меню
+  // Default — нер��с��ознанный текст, показываем меню
   await showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role);
 }
 
@@ -1333,7 +1333,7 @@ async function showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role) {
 // ─────────────────────────── VEHICLE MANAGEMENT ───────────────
 async function showVehicleMenu(uid, peerId, profile) {
   const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
-  const text = `Автоп��р��:\n\nЛичные авто:\n${(profile.vehicles || []).map(v => `• ${v.name}${v.brandColor ? ' [фирм.]' : ''}`).join('\n') || '(нет)'}\n\nАвто организации:\n${(profile.orgVehicles || []).map(v => `• ${v.name}`).join('\n') || '(нет)'}`;
+  const text = `Автоп����р��:\n\nЛичные авто:\n${(profile.vehicles || []).map(v => `• ${v.name}${v.brandColor ? ' [фирм.]' : ''}`).join('\n') || '(нет)'}\n\nАвто организации:\n${(profile.orgVehicles || []).map(v => `• ${v.name}`).join('\n') || '(нет)'}`;
   await sendMessage(peerId, text, {
     keyboard: msgKb([
       [{ label: 'Добавить личное авто' }, { label: 'Взять авто организации' }],
@@ -1915,7 +1915,7 @@ async function handleAdminTaxiPoints(uid, peerId, text, event) {
     return true;
   }
   if (step === 'tp_add_point_price') {
-    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', {}, 1); return true; }
+    if (text === '��тмена') { sess.step = null; storage.adminSessions.set(uid, sess); await sendMessage(peerId, 'Отменено.', {}, 1); return true; }
     const price = parseInt(text);
     if (isNaN(price) || price < 0) { await sendMessage(peerId, 'Введите корректное число (цену).', {}, 1); return true; }
     sess.data.tpPointPrice = price;
@@ -2178,6 +2178,8 @@ async function handleTaxiDM(event) {
     if (handled) return;
   }
 
+  const MINI_APP_URL = `${APP_URL}/taxi`;
+
   const mainKb = msgKb([
     [{ label: 'Заказать такси', color: 'positive' }],
     [{ label: 'Трудоустройство', color: 'secondary' }, { label: 'Частые вопросы', color: 'secondary' }],
@@ -2202,16 +2204,16 @@ async function handleTaxiDM(event) {
   }
   if (text === 'Частые вопросы') {
     await sendMessage(peerId,
-      'FAQ такси:\n\n— Как рассчитывается цена?\nПо расстоянию между точками на карте с учётом часа пик (18–22 МСК ×1.3).\n\n— Можно добавить попутчика?\nДа, до 2 попутчиков.\n\n— Комиссия за оплату?\nНаличные — 0%, счёт телефона — 7%, банковский счёт — 5%.',
+      'FAQ такси:\n\n— Как рассчитывается цена?\nПо расстоянию между точками на карте с учётом часа пик (18–22 МСК ×1.3).\n\n— Можно добавить попутчика?\nДа, до 2 попутчиков.\n\n— Комиссия за оплату?\nНаличные — 0%, счёт теле��она — 7%, банковский счёт — 5%.',
       { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
     return;
   }
 
-  // ── Start order ────────────────────────────────────────────
+  // ── Start order — send Mini App link ───────────────────────
   if (text === 'Заказать такси') {
-    sess.step = TAXI_STEP.ORDER_NICK; sess.data = {};
-    storage.clientSessions.set('taxi_'+uid, sess);
-    await sendMessage(peerId, 'Введите ваш никнейм:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 3);
+    await sendMessage(peerId,
+      `Для заказа такси откройте мини-приложение:\n\n${MINI_APP_URL}?uid=${uid}\n\nВы можете нажать на ссылку или скопировать её в браузер.`,
+      { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
     return;
   }
 
@@ -3590,6 +3592,79 @@ async function pollGroup(groupId, token, groupKey, label) {
       } catch (_) {}
     }
   }
+}
+
+// ─────────────────────────── MINI APP DISPATCH POLLER ────────
+// Polls taxi_pending_dispatch.json every 3 sec and sends new taxi orders to dispatch chat
+const TAXI_PENDING_DISPATCH_FILE = path.join(DATA_DIR, 'taxi_pending_dispatch.json');
+
+async function pollPendingTaxiDispatch() {
+  while (true) {
+    try {
+      const pending = readJSON(TAXI_PENDING_DISPATCH_FILE, []);
+      if (Array.isArray(pending) && pending.length > 0) {
+        // Process each order
+        writeJSON(TAXI_PENDING_DISPATCH_FILE, []); // clear immediately to avoid double-send
+        for (const order of pending) {
+          await sendTaxiOrderToDispatch(order);
+          // Also notify the client in VK DM
+          if (order.clientId && order.clientId !== 0) {
+            const orderNum = order.num ? `#${order.num}` : `#${(order.id||'').slice(-6)}`;
+            await sendMessage(order.clientId,
+              `Заказ такси ${orderNum} принят диспетчерской!\n\nОткуда: ${order.from?.name}\nКуда: ${order.to?.name}\nСтоимость: ${order.finalPrice}р.\n\nОжидайте назначения водителя.`,
+              { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[Bot] pollPendingTaxiDispatch error:', e.message);
+    }
+    await new Promise(r => setTimeout(r, 3000));
+  }
+}
+
+async function sendTaxiOrderToDispatch(order) {
+  const orderNum = order.num ? `#${order.num}` : `#${(order.id||'').slice(-6)}`;
+  const passText = order.passengers && order.passengers.length
+    ? `\nПопутчики: ${order.passengers.join(', ')}`
+    : '';
+  const promoText = order.promoDesc ? `\n${order.promoDesc}` : '';
+  const payMap = { cash: 'Наличными', phone: 'Счёт телефона', bank: 'Банк. счёт' };
+  const payText = payMap[order.payment] || order.payment || 'не указана';
+
+  const text = `Новый заказ такси ${orderNum}\n\nНикнейм: ${order.nick}${passText}\nОткуда: ${order.from?.name}\nКуда: ${order.to?.name}\nОплата: ${payText}\nСтоимость: ${order.finalPrice}р.${promoText}`;
+
+  const keyboard = kb([[{ label: `Принять заказ ${orderNum}`, color: 'positive', payload: { action: 'accept_order', orderId: order.id } }]]);
+  const chatId = CHATS.taxiDispetcherskaya;
+  if (!chatId || chatId === 0) { console.error('[Bot] taxiDispatchChatId not configured'); return; }
+
+  // Send snapshot photo if available
+  let attachment = '';
+  if (order.mapSnapshotUrl && order.mapSnapshotUrl.startsWith('data:image')) {
+    try {
+      // Upload to VK via photos.getMessagesUploadServer → upload → photos.saveMessagesPhoto
+      const uploadServerRes = await callVK('photos.getMessagesUploadServer', { peer_id: chatId }, 1);
+      if (uploadServerRes && uploadServerRes.upload_url) {
+        const { FormData, Blob } = await import('node:buffer').then(m => ({ FormData: globalThis.FormData, Blob: globalThis.Blob })).catch(() => ({}));
+        if (FormData && Blob) {
+          const base64Data = order.mapSnapshotUrl.replace(/^data:image\/\w+;base64,/, '');
+          const buf = Buffer.from(base64Data, 'base64');
+          const form = new FormData();
+          form.append('photo', new Blob([buf], { type: 'image/png' }), 'route.png');
+          const upRes = await fetch(uploadServerRes.upload_url, { method: 'POST', body: form });
+          const upData = await upRes.json();
+          if (upData.server && upData.photo && upData.hash) {
+            const saved = await callVK('photos.saveMessagesPhoto', { server: upData.server, photo: upData.photo, hash: upData.hash }, 1);
+            if (saved && saved[0]) attachment = `photo${saved[0].owner_id}_${saved[0].id}`;
+          }
+        }
+      }
+    } catch (e) { console.error('[Bot] sendTaxiOrderToDispatch photo upload error:', e.message); }
+  }
+
+  let msgId = await sendMessage(chatId, text, { keyboard, attachment: attachment || undefined }, 1);
+  if (!msgId) msgId = await sendMessage(chatId, text, { keyboard, attachment: attachment || undefined }, 3);
+  if (msgId) storage.orderMsgIds.set(order.id, { dispatchMsgId: msgId, chatId });
 }
 
 // ─────────────────────────── ENTRYPOINT ──────────────────────
