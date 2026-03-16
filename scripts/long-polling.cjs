@@ -350,7 +350,7 @@ function isAdmin(uid, peerId) { return hasPermission(uid, peerId, ['rs']); }
 // ─────────────────────────── CATALOGUE HELPERS ────────────────
 function loadCatalogue() {
   const cat = readJSON(CATALOGUE_FILE, { categories: [], items: [], sets: [] });
-  // Гарантируем что все поля существуют (защита от п��вреждённого файла)
+  // Гарантируем что все поля существуют (защита от п����вреждённого файла)
   if (!Array.isArray(cat.categories)) cat.categories = [];
   if (!Array.isArray(cat.items)) cat.items = [];
   if (!Array.isArray(cat.sets)) cat.sets = [];
@@ -838,7 +838,7 @@ async function sendOrderToDispatch(order) {
   const costTotal = order.costTotal || 0;
   const orderNumDisplay = order.num ? `#${order.num}` : `#${order.id.slice(-6)}`;
   const costLine = costTotal > 0 ? `\nСебестоимость: ${costTotal}р.` : '';
-  const text = `Новый заказ ${orderNumDisplay}\n\nНикнейм: ${order.nick}\nМесто: ${order.address}\nЗаказ:\n${lines.join('\n')}\nИтого: ${total}р.${costLine}${order.promoDesc ? '\n' + order.promoDesc : ''}`;
+  const text = `Новый заказ ${orderNumDisplay}\n\nНикнейм: ${order.nick}\nМесто: ${order.address}\nЗаказ:\n${lines.join('\n')}\nИтог��: ${total}р.${costLine}${order.promoDesc ? '\n' + order.promoDesc : ''}`;
 
   const keyboard = kb([[{ label: 'Принять заказ', color: 'positive', payload: { action: 'accept_order', orderId: order.id } }]]);
 
@@ -1014,7 +1014,7 @@ async function buildTaxiDriverScreen(uid, order) {
 
   const buttons = [
     [{ label: 'Прибыл к клиенту', color: 'positive', payload: { action: 'courier_arrived', orderId: order.id } }],
-    [{ label: 'Платно�� ожидание', color: 'secondary', payload: { action: 'taxi_paid_waiting', orderId: order.id } }],
+    [{ label: 'Плат��о�� ожидание', color: 'secondary', payload: { action: 'taxi_paid_waiting', orderId: order.id } }],
     [{ label: 'Завершить поездку', color: 'positive', payload: { action: 'finish_order', orderId: order.id } }],
     [{ label: `Связь с клиентом: vk.me/id${order.clientId}`, color: 'secondary', payload: { action: 'noop' } }],
   ];
@@ -1176,7 +1176,7 @@ async function handleGroup1DM(event) {
     return;
   }
 
-  // Главное меню Group1 DM — кнопки вместо команд
+  // Главное меню Group1 DM — кнопки ��место команд
   if (text === 'Главное меню' || text === 'начать' || text === '/start') {
     sess.step = STAFF_STEP.NONE;
     storage.staffSessions.set(uid, sess);
@@ -2222,7 +2222,7 @@ async function handleTaxiDM(event) {
   }
   if (text === 'Частые вопросы') {
     await sendMessage(peerId,
-      'FAQ такси:\n\n— Как рассчитывается цена?\nПо расстоянию между точками на карте с учётом часа пик (18–22 МСК ×1.3).\n\n— Можно добавить попутчика?\nДа, до 2 попутчиков.\n\n— Ком��ссия за оплату?\nНаличные — 0%, счёт теле��она — 7%, банковский счёт — 5%.',
+      'FAQ такси:\n\n— Как рассчитывается цена?\nПо расстоянию между точками на карте с учётом часа пик (18–22 МСК ×1.3).\n\n— Можно добавить попутчика?\nДа, до 2 попутчиков.\n\n— Комиссия за оплату?\nНаличные — 0%, счёт телефона — 7%, банковский счёт — 5%.',
       { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
     return;
   }
@@ -3368,7 +3368,7 @@ async function handleTaxiDM(event) {
       // Update dispatch message
       const ids = storage.orderMsgIds.get(orderId);
       if (ids) {
-        await editMessage(ids.chatId, ids.dispatchMsgId, `Заказ ${getOrderNumDisplay(order, orderId)} — готовится (курьер: ${order.courierNick})`, {
+        await editMessage(ids.chatId, ids.dispatchMsgId, `Заказ ${getOrderNumDisplay(order, orderId)} — готовитс�� (курьер: ${order.courierNick})`, {
           keyboard: kb([[{ label: 'Статус: Готовится', color: 'secondary', payload: {} }]])
         }, 1);
       }
@@ -3481,7 +3481,7 @@ async function handleTaxiDM(event) {
           isJournal ? { keyboard: journalKeyboard() } : {}, groupKey);
       } else if (isJournal) {
         await sendMessage(peerId,
-          `Привет, ${name}! Нажми !онлайн чтобы начать смену.`,
+          `Приве��, ${name}! Нажми !онлайн чтобы начать смену.`,
           { keyboard: journalKeyboard() }, groupKey);
       }
     }
@@ -3698,7 +3698,7 @@ async function handleTaxiDM(event) {
     if (msgId) storage.orderMsgIds.set(order.id, { dispatchMsgId: msgId, chatId });
   }
 
-  // ─────────────────────────── ENTRYPOINT ──────────────────────
+  // ──────────────���──────────── ENTRYPOINT ──────────────────────
   async function main() {
     console.log('[Bot] Запуск...');
 
