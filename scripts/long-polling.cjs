@@ -350,7 +350,7 @@ function isAdmin(uid, peerId) { return hasPermission(uid, peerId, ['rs']); }
 // ─────────────────────────── CATALOGUE HELPERS ────────────────
 function loadCatalogue() {
   const cat = readJSON(CATALOGUE_FILE, { categories: [], items: [], sets: [] });
-  // Гарантируем что все поля существуют (защита от п������вреждённого файла)
+  // Гарантируем что все поля существуют (защита от п��������вреждённого файла)
   if (!Array.isArray(cat.categories)) cat.categories = [];
   if (!Array.isArray(cat.items)) cat.items = [];
   if (!Array.isArray(cat.sets)) cat.sets = [];
@@ -1009,7 +1009,7 @@ async function buildTaxiDriverScreen(uid, order) {
     ? `\nПопутчики: ${order.passengers.join(', ')}`
     : '';
   const payText = order.payment?.type === 'cash' ? 'Наличными'
-    : order.payment?.type === 'phone' ? 'Счёт телефона' : 'Банковский счёт';
+    : order.payment?.type === 'phone' ? 'Счёт телефона' : 'Банковс��ий счёт';
   const text = `Такси ${getOrderNumDisplay(order)}\n\nКлиент: ${order.nick}${passText}\nОткуда: ${order.from?.name || '—'}\nКуда: ${order.to?.name || '—'}\nСумма: ${order.finalPrice}р. (${payText})`;
 
   const buttons = [
@@ -1176,7 +1176,7 @@ async function handleGroup1DM(event) {
     return;
   }
 
-  // Главное меню Group1 DM — кнопки ��место команд
+  // Главное ме��ю Group1 DM — кнопки ��место команд
   if (text === 'Главное меню' || text === 'начать' || text === '/start') {
     sess.step = STAFF_STEP.NONE;
     storage.staffSessions.set(uid, sess);
@@ -1762,7 +1762,7 @@ async function handleAdminPromosSession(uid, peerId, text, event, role) {
     return true;
   }
 
-  if (text === 'Добавить промокод доставки' || text === 'Добавить промокод такси') {
+  if (text === 'Добавить промокод достав��и' || text === 'Добавить промокод такси') {
     sess.data.promoService = text.includes('такси') ? 'taxi' : 'delivery';
     sess.step = 'admin_promo_code'; storage.adminSessions.set(uid, sess);
     await sendMessage(peerId, 'Введите код промокода:', {}, 1);
@@ -2364,7 +2364,7 @@ async function handleTaxiDM(event) {
     return;
   }
 
-  // ── Payment method ─────────────────────────────────────────
+  // ── Payment method ────────────────────────��────────────────
   if (sess.step === TAXI_STEP.ORDER_PAYMENT) {
     if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_' + uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
     const payMap = { 'Наличными': { type: 'cash', commission: 0 }, 'Счёт телефона': { type: 'phone', commission: 0.07 }, 'Банковский счёт': { type: 'bank', commission: 0.05 } };
@@ -2378,7 +2378,7 @@ async function handleTaxiDM(event) {
       sess.step = TAXI_STEP.ORDER_PAYMENT_SCREEN;
       storage.clientSessions.set('taxi_' + uid, sess);
       await sendMessage(peerId,
-        `Итоговая сумма (с комиссией ${Math.round(pay.commission * 100)}%): ${finalPrice}р.\n\nПереведите средства на ��чёт ${ORG_BANK} и пришлите скриншот оплаты с /timestamp или временем над HUD.`,
+        `Итоговая сумма (с комиссией ${Math.round(pay.commission * 100)}%): ${finalPrice}р.\n\nПереведите средства на счёт ${ORG_BANK} и пришлите скриншот оплаты с /timestamp или временем над HUD.`,
         { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 3);
       return;
     }
@@ -2461,7 +2461,7 @@ async function handleTaxiDM(event) {
 
   async function showTaxiConfirm(peerId, uid, sess, groupKey) {
     const passText = sess.data.passengers?.length ? `\nПопутчики: ${sess.data.passengers.join(', ')}` : '';
-    const payText = sess.data.payment.type === 'cash' ? 'Наличными' : sess.data.payment.type === 'phone' ? 'Счёт телефона' : 'Банковский счё��';
+    const payText = sess.data.payment.type === 'cash' ? 'Наличными' : sess.data.payment.type === 'phone' ? 'Счёт телефона' : 'Банковский счёт';
     const promoText = sess.data.promoDesc ? `\nПромокод: ${sess.data.promoDesc}` : '';
     await sendMessage(peerId,
       `Проверьте заказ:\n\nНик: ${sess.data.nick}${passText}\nОткуда: ${sess.data.from.name}\nКуда: ${sess.data.to.name}\nОплата: ${payText}\nСтоимость: ${sess.data.finalPrice}р.${promoText}\n\nВсё верно?`,
@@ -3698,7 +3698,7 @@ async function handleTaxiDM(event) {
     if (msgId) storage.orderMsgIds.set(order.id, { dispatchMsgId: msgId, chatId });
   }
 
-  // ──────────────���──────────── ENTRYPOINT ──────────────────────
+  // ───��──────────���──────────── ENTRYPOINT ──────────────────────
   async function main() {
     console.log('[Bot] Запуск...');
 
