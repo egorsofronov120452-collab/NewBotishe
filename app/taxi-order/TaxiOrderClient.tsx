@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 
 interface TaxiPoint {
   id: string
@@ -21,7 +21,17 @@ type Step = 'from' | 'to' | 'confirm' | 'done'
 
 export default function TaxiOrderClient() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const token = searchParams.get('token') || ''
+  const uid   = searchParams.get('uid')   || searchParams.get('vk_user_id') || ''
+
+  // If uid is passed (new flow from VK bot open_link button),
+  // redirect to the full order app which handles the complete flow.
+  useEffect(() => {
+    if (!token && uid) {
+      router.replace(`/taxi?uid=${uid}`)
+    }
+  }, [token, uid, router])
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const mapImgRef = useRef<HTMLImageElement | null>(null)
@@ -424,6 +434,15 @@ export default function TaxiOrderClient() {
     confirm: 'Подтверждение заказа',
     done: 'Заказ отправлен',
   }[step]
+
+  // Redirect in progress (uid flow — full order is handled by /taxi)
+  if (!token && uid) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: '#0a0a0f' }}>
+        <div className="w-10 h-10 border-2 rounded-full animate-spin" style={{ borderColor: '#7c8cff', borderTopColor: 'transparent' }} />
+      </div>
+    )
+  }
 
   return (
     <div className="relative w-full h-screen overflow-hidden flex flex-col" style={{ background: '#0a0a0f' }}>

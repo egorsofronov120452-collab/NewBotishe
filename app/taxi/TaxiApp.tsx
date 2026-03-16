@@ -21,16 +21,22 @@ export default function TaxiApp() {
 
   useEffect(() => {
     // Parse VK launch params from URL hash/search
-    const params = new URLSearchParams(
-      typeof window !== 'undefined'
-        ? (window.location.search || window.location.hash.replace('#', ''))
-        : ''
-    )
-    const vkUserId = params.get('vk_user_id') || params.get('uid')
+    // Supports: ?vk_user_id=..., ?uid=..., VK Mini App hash params
+    const search = typeof window !== 'undefined' ? window.location.search : ''
+    const hash   = typeof window !== 'undefined' ? window.location.hash.replace('#', '') : ''
+
+    const fromSearch = new URLSearchParams(search)
+    const fromHash   = new URLSearchParams(hash)
+
+    const vkUserId =
+      fromSearch.get('vk_user_id') ||
+      fromSearch.get('uid') ||
+      fromHash.get('vk_user_id') ||
+      fromHash.get('uid')
 
     if (!vkUserId) {
       // In development/preview — allow with a mock user id
-      const devId = params.get('dev_uid') || '0'
+      const devId = fromSearch.get('dev_uid') || fromHash.get('dev_uid') || '0'
       loadUser(devId)
       return
     }
