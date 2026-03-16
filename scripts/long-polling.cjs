@@ -350,7 +350,7 @@ function isAdmin(uid, peerId) { return hasPermission(uid, peerId, ['rs']); }
 // ─────────────────────────── CATALOGUE HELPERS ────────────────
 function loadCatalogue() {
   const cat = readJSON(CATALOGUE_FILE, { categories: [], items: [], sets: [] });
-  // Гарантируем что все поля существуют (защита от п��������вреждённого файла)
+  // Гарантируем что все поля существуют (защита от п����������вреждённого файла)
   if (!Array.isArray(cat.categories)) cat.categories = [];
   if (!Array.isArray(cat.items)) cat.items = [];
   if (!Array.isArray(cat.sets)) cat.sets = [];
@@ -1160,7 +1160,7 @@ async function handleGroup1DM(event) {
     sess.step = STAFF_STEP.NONE;
     storage.staffSessions.set(uid, sess);
     await sendMessage(peerId,
-      `Профиль создан!\nНик: ${sess.data.nick}\nБанк. счёт: ${sess.data.bank}\n\nТеперь добавьте транспортное средство, чтобы принимать заказы.`,
+      `Профиль создан!\nНик: ${sess.data.nick}\nБанк. счёт: ${sess.data.bank}\n\nТеперь доба��ьте транспортное средство, чтобы принимать заказы.`,
       {
         keyboard: msgKb([
           [{ label: 'Автопарк', color: 'positive' }],
@@ -1176,7 +1176,7 @@ async function handleGroup1DM(event) {
     return;
   }
 
-  // Главное ме��ю Group1 DM — кнопки ��место команд
+  // Главное м����ю Group1 DM — кнопки ��место команд
   if (text === 'Главное меню' || text === 'начать' || text === '/start') {
     sess.step = STAFF_STEP.NONE;
     storage.staffSessions.set(uid, sess);
@@ -2457,9 +2457,9 @@ async function handleTaxiDM(event) {
       if (text === 'Главное меню') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_' + uid, sess); return; }
       return;
     }
-  }
+}
 
-  async function showTaxiConfirm(peerId, uid, sess, groupKey) {
+async function showTaxiConfirm(peerId, uid, sess, groupKey) {
     const passText = sess.data.passengers?.length ? `\nПопутчики: ${sess.data.passengers.join(', ')}` : '';
     const payText = sess.data.payment.type === 'cash' ? 'Наличными' : sess.data.payment.type === 'phone' ? 'Счёт телефона' : 'Банковский счёт';
     const promoText = sess.data.promoDesc ? `\nПромокод: ${sess.data.promoDesc}` : '';
@@ -3219,7 +3219,7 @@ async function handleTaxiDM(event) {
       const reason = parts.slice(reply ? 2 : 3).join(' ') || 'Нарушение правил';
       addToBlacklist(targetId, days, reason, uid);
       const target = await getUser(targetId, groupKey);
-      await sendMessage(peerId, `${target ? createUserLink(target) : targetId} забанен на ${days || 'ПЕРМАНЕНТНО'} дней. Причина: ${reason}`, {}, groupKey);
+      await sendMessage(peerId, `${target ? createUserLink(target) : targetId} забанен на ${days || 'ПЕРМАНЕНТНО'} д��ей. Причина: ${reason}`, {}, groupKey);
       return true;
     }
 
@@ -3728,4 +3728,3 @@ async function handleTaxiDM(event) {
       console.error('[Bot] Fatal:', e.message);
       process.exit(1);
     });
-}
