@@ -414,12 +414,6 @@ export function OrderFlow({ user }: Props) {
       )}
     </div>
   )
-
-  function applyPaymentFee(base: number, method: 'cash' | 'phone' | 'bank'): number {
-    if (method === 'phone') return Math.round(base * 1.07)
-    if (method === 'bank')  return Math.round(base * 1.05)
-    return base
-  }
 }
 
 // ─── Sub-components ─────────────────────────────────────────────
