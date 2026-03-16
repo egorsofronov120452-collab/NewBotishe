@@ -350,7 +350,7 @@ function isAdmin(uid, peerId) { return hasPermission(uid, peerId, ['rs']); }
 // ─────────────────────────── CATALOGUE HELPERS ────────────────
 function loadCatalogue() {
   const cat = readJSON(CATALOGUE_FILE, { categories: [], items: [], sets: [] });
-  // Гарантируем что все поля существуют (защита от п����вреждённого файла)
+  // Гарантируем что все поля существуют (защита от п������вреждённого файла)
   if (!Array.isArray(cat.categories)) cat.categories = [];
   if (!Array.isArray(cat.items)) cat.items = [];
   if (!Array.isArray(cat.sets)) cat.sets = [];
@@ -900,7 +900,7 @@ function getOnlineCouriers(type) {
   storage.online.forEach((info, uid) => {
     const profile = staff[String(uid)];
     if (!profile) return;
-    // groups определяет организацию сотрудника: ['delivery'], ['taxi'], или обе
+    // groups определяет организацию ��отрудника: ['delivery'], ['taxi'], или обе
     const groups = profile.groups || [];
     const inDelivery = groups.includes('delivery');
     const inTaxi = groups.includes('taxi');
@@ -1348,7 +1348,7 @@ async function showVehicleMenu(uid, peerId, profile) {
   const text = `��вт��п����р��:\n\nЛичные авто:\n${(profile.vehicles || []).map(v => `• ${v.name}${v.brandColor ? ' [фирм.]' : ''}`).join('\n') || '(нет)'}\n\nАвто организации:\n${(profile.orgVehicles || []).map(v => `• ${v.name}`).join('\n') || '(нет)'}`;
   await sendMessage(peerId, text, {
     keyboard: msgKb([
-      [{ label: 'Добавить личное авто' }, { label: 'Взять авто организации' }],
+      [{ label: 'Добавить личное авто' }, { label: 'Взять ав��о организации' }],
       [{ label: 'Удалить авто' }],
       [{ label: 'Мой профиль', color: 'secondary' }],
     ])
@@ -2231,7 +2231,7 @@ async function handleTaxiDM(event) {
   if (text === 'Заказать такси') {
     const orderUrl = `${APP_URL}/taxi?uid=${uid}`;
     await sendMessage(peerId,
-      `Нажмите кнопку ниже, чтобы открыть форму заказа такси:`,
+      'Нажмите кнопку ниже, чтобы открыть форму заказа такси:',
       {
         keyboard: JSON.stringify({
           one_time: false,
