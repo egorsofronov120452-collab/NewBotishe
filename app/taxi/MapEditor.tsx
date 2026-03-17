@@ -198,25 +198,44 @@ export function MapEditor({ user }: Props) {
   function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      const dataUrl = ev.target?.result as string
-      const img = new Image()
-      img.onload = () => {
-        imgRef.current = img
-        const canvas = canvasRef.current!
-        canvas.width  = img.naturalWidth
-        canvas.height = img.naturalHeight
-        if (mapData) {
-          const updated = { ...mapData, config: { ...mapData.config, mapImageUrl: dataUrl, mapWidth: img.naturalWidth, mapHeight: img.naturalHeight } }
-          setMapData(updated)
-          setCfg(updated.config)
+
+    // Upload to server → saves to public/tools/taxi-map.jpg
+    const fd = new FormData()
+    fd.append('file', file)
+    fetch('/api/taxi-map-upload', { method: 'POST', body: fd })
+      .then(r => r.json())
+      .then(d => {
+        if (!d.ok) { alert('Ошибка загрузки: ' + d.error); return }
+        const url = d.url + '?t=' + Date.now() // cache-bust
+        const img = new Image()
+        img.crossOrigin = 'anonymous'
+        img.onload = () => {
+          imgRef.current = img
+          const canvas = canvasRef.current!
+          canvas.width  = img.naturalWidth
+          canvas.height = img.naturalHeight
+          if (mapData) {
+            const updated: MapData = {
+              ...mapData,
+              config: {
+                ...mapData.config,
+                mapImageUrl: '/tools/taxi-map.jpg',
+                mapWidth:  img.naturalWidth,
+                mapHeight: img.naturalHeight,
+              },
+            }
+            setMapData(updated)
+            setCfg(updated.config)
+          }
+          redraw()
         }
-        redraw()
-      }
-      img.src = dataUrl
-    }
-    reader.readAsDataURL(file)
+        img.onerror = () => alert('Карта загружена на сервер, но не удалось отобразить. Попробуйте перезагрузить страницу.')
+        img.src = url
+      })
+      .catch(err => alert('Ошибка: ' + err.message))
+
+    // Reset input so same file can be re-selected
+    e.target.value = ''
   }
 
   // ── Save ─────────────────────────────────────────────────────
@@ -274,6 +293,34 @@ export function MapEditor({ user }: Props) {
           className="px-3 py-1.5 bg-surface2 border border-border rounded-lg text-foreground text-xs font-medium"
         >
           Загрузить карту
+        </button>
+        <button
+          onClick={() => {
+            // Use already-uploaded file at /tools/taxi-map.jpg
+            const url = '/tools/taxi-map.jpg?t=' + Date.now()
+            const img = new Image()
+            img.crossOrigin = 'anonymous'
+            img.onload = () => {
+              imgRef.current = img
+              const canvas = canvasRef.current!
+              canvas.width  = img.naturalWidth
+              canvas.height = img.naturalHeight
+              if (mapData) {
+                const updated: MapData = {
+                  ...mapData,
+                  config: { ...mapData.config, mapImageUrl: '/tools/taxi-map.jpg', mapWidth: img.naturalWidth, mapHeight: img.naturalHeight },
+                }
+                setMapData(updated)
+                setCfg(updated.config)
+              }
+              redraw()
+            }
+            img.onerror = () => alert('Файл /tools/taxi-map.jpg не найден. Используйте кнопку "Загрузить карту".')
+            img.src = url
+          }}
+          className="px-3 py-1.5 bg-surface2 border border-border rounded-lg text-foreground text-xs font-medium"
+        >
+          tools/taxi-map.jpg
         </button>
         <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
         <button

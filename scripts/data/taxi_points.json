@@ -1,5 +1,16 @@
 {
   "cities": [],
   "categories": [],
-  "points": []
+  "points": [],
+  "zones": [],
+  "config": {
+    "pricePerPixel": 0.5,
+    "peakMultiplier": 1.3,
+    "peakStart": 18,
+    "peakEnd": 22,
+    "minPrice": 50,
+    "mapImageUrl": "/tools/taxi-map.jpg",
+    "mapWidth": 1000,
+    "mapHeight": 800
+  }
 }

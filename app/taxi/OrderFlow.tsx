@@ -474,9 +474,9 @@ function MapPickStep({ title, hint, step, total, mapData, kind, fromPoint, toPoi
     }
   }, [points, zones, fromPoint, toPoint, hoveredPt])
 
-  // Load image
+  // Load image — use mapImageUrl or fallback to /tools/taxi-map.jpg
   useEffect(() => {
-    if (!cfg?.mapImageUrl) return
+    const url = cfg?.mapImageUrl || '/tools/taxi-map.jpg'
     const img = new Image()
     img.crossOrigin = 'anonymous'
     img.onload = () => {
@@ -485,11 +485,17 @@ function MapPickStep({ title, hint, step, total, mapData, kind, fromPoint, toPoi
         canvas.width  = img.naturalWidth
         canvas.height = img.naturalHeight
       }
-      imgRef.current    = img
+      imgRef.current       = img
       imgLoadedRef.current = true
       redraw()
     }
-    img.src = cfg.mapImageUrl
+    img.onerror = () => {
+      // Couldn't load image — show fallback list
+      imgLoadedRef.current = false
+      imgRef.current       = null
+      redraw()
+    }
+    img.src = url
   }, [cfg?.mapImageUrl])
 
   useEffect(() => { redraw() }, [redraw])
@@ -498,7 +504,7 @@ function MapPickStep({ title, hint, step, total, mapData, kind, fromPoint, toPoi
   function findNearestPoint(mx: number, my: number): Point | null {
     let best: Point | null = null
     let bestDist = Infinity
-    const HIT_RADIUS = 30 // pixels on the canvas
+    const HIT_RADIUS = 48 // pixels on the canvas — larger for finger taps
     for (const pt of points) {
       const d = Math.hypot(pt.x - mx, pt.y - my)
       if (d < HIT_RADIUS && d < bestDist) { best = pt; bestDist = d }
@@ -544,7 +550,7 @@ function MapPickStep({ title, hint, step, total, mapData, kind, fromPoint, toPoi
     onSelect(pt)
   }
 
-  const noMapImage = !cfg?.mapImageUrl
+  const noMapImage = !imgLoadedRef.current
 
   return (
     <div className="flex flex-col h-full">
