@@ -22,16 +22,59 @@
 
 'use strict';
 
+// ─────────────────────────── GLOBAL ERROR HANDLERS ───────────────────────────
+process.on('uncaughtException', (err) => {
+  console.error('[Bot] uncaughtException:', err.message);
+  console.error(err.stack);
+  // Не завершаем процесс — PM2 сам перезапустит при необходимости
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Bot] unhandledRejection at:', promise);
+  console.error('[Bot] reason:', reason instanceof Error ? reason.stack : reason);
+});
+
+process.on('exit', (code) => {
+  console.log(`[Bot] Process exit with code: ${code}`);
+});
+
+process.on('SIGTERM', () => {
+  console.log('[Bot] SIGTERM received, shutting down gracefully...');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('[Bot] SIGINT received, shutting down...');
+  process.exit(0);
+});
+
 const path = require('path');
 const fs = require('fs');
 
 // ─────────────────────────── ENV ────────────────────────────
-const envPath = path.join(__dirname, '..', '.env');
-if (fs.existsSync(envPath)) {
-  require('dotenv').config({ path: envPath });
-  console.log('[Bot] .env загружен');
-} else {
-  console.error('[Bot] .env не найден');
+console.log('[Bot] === СТАРТ ПРОЦЕССА ===');
+console.log('[Bot] Node.js версия:', process.version);
+console.log('[Bot] CWD:', process.cwd());
+console.log('[Bot] __dirname:', __dirname);
+console.log('[Bot] PID:', process.pid);
+
+// Ищем .env в нескольких местах для надёжности
+const envPaths = [
+  path.join(__dirname, '..', '.env'),
+  path.join(process.cwd(), '.env'),
+  path.join(__dirname, '.env'),
+];
+let envLoaded = false;
+for (const envPath of envPaths) {
+  if (fs.existsSync(envPath)) {
+    require('dotenv').config({ path: envPath });
+    console.log('[Bot] .env загружен из:', envPath);
+    envLoaded = true;
+    break;
+  }
+}
+if (!envLoaded) {
+  console.error('[Bot] .env НЕ найден! Проверены пути:', envPaths.join(', '));
 }
 
 const VK_API_VERSION = '5.131';
@@ -45,7 +88,19 @@ const USER_TOKEN = process.env.VK_USER_TOKEN;
 const ORG_BANK = process.env.VK_ORG_BANK_ACCOUNT || '852006';
 const APP_URL = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
 
-if (!G1_TOKEN || !G1_ID) { console.error('[Bot] VK_GROUP1_TOKEN / VK_GROUP1_ID не установлены'); process.exit(1); }
+console.log('[Bot] ENV проверка:');
+console.log('[Bot]   VK_GROUP1_TOKEN:', G1_TOKEN ? `присутствует (${G1_TOKEN.slice(0, 8)}...)` : 'ОТСУТСТВУЕТ');
+console.log('[Bot]   VK_GROUP1_ID:', G1_ID || 'ОТСУТСТВУЕТ');
+console.log('[Bot]   VK_GROUP2_TOKEN:', G2_TOKEN ? 'присутствует' : 'отсутствует');
+console.log('[Bot]   VK_GROUP2_ID:', G2_ID || 'отсутствует');
+console.log('[Bot]   VK_GROUP3_TOKEN:', G3_TOKEN ? 'присутствует' : 'отсутствует');
+console.log('[Bot]   VK_GROUP3_ID:', G3_ID || 'отсутствует');
+console.log('[Bot]   APP_URL:', APP_URL);
+
+if (!G1_TOKEN || !G1_ID) {
+  console.error('[Bot] КРИТИЧНО: VK_GROUP1_TOKEN / VK_GROUP1_ID не установлены — завершение');
+  process.exit(1);
+}
 
 // ─────────────────────────── CHATS ───────────────────────────
 // Полный список: 12 чатов Kaskad Group
@@ -350,7 +405,7 @@ function isAdmin(uid, peerId) { return hasPermission(uid, peerId, ['rs']); }
 // ─────────────────────────── CATALOGUE HELPERS ────────────────
 function loadCatalogue() {
   const cat = readJSON(CATALOGUE_FILE, { categories: [], items: [], sets: [] });
-  // Гарантируем что все поля существуют (защита от п������������вреждённого файла)
+  // Гарантируем что все поля существуют (защита от п��������������вреждённого файла)
   if (!Array.isArray(cat.categories)) cat.categories = [];
   if (!Array.isArray(cat.items)) cat.items = [];
   if (!Array.isArray(cat.sets)) cat.sets = [];
@@ -653,7 +708,7 @@ async function handleDeliveryDM(event) {
     }
     if (text === 'Оформить заказ') {
       if (!sess.data.basket || sess.data.basket.length === 0) {
-        await sendMessage(peerId, 'Корзина пуста. Добавьте товары.', {}, 2);
+        await sendMessage(peerId, 'Корзина пуста. ��обавьте товары.', {}, 2);
         return;
       }
       sess.step = DEL_STEP.CHECKOUT_NICK;
@@ -1160,7 +1215,7 @@ async function handleGroup1DM(event) {
     sess.step = STAFF_STEP.NONE;
     storage.staffSessions.set(uid, sess);
     await sendMessage(peerId,
-      `Профиль создан!\nНик: ${sess.data.nick}\nБанк. счёт: ${sess.data.bank}\n\nТеперь доба��ьте транспортное средство, чтобы принимать заказы.`,
+      `Пр��филь создан!\nНик: ${sess.data.nick}\nБанк. счёт: ${sess.data.bank}\n\nТеперь доба��ьте транспортное средство, чтобы принимать заказы.`,
       {
         keyboard: msgKb([
           [{ label: 'Автопарк', color: 'positive' }],
@@ -1642,7 +1697,7 @@ async function handleAdminCatalogueSession(uid, peerId, text, event) {
   }
 
   // ─ Add Set ──────────────────────────────────────────────
-  if (text === 'Добавить сет') {
+  if (text === 'До��авить сет') {
     sess.step = 'admin_set_name'; storage.adminSessions.set(uid, sess);
     await sendMessage(peerId, 'Введите название сета:', {}, 1);
     return true;
@@ -1839,7 +1894,7 @@ async function handleAdminPromosSession(uid, peerId, text, event, role) {
     }
     writeJSON(PROMOS_FILE, promos);
     sess.step = null; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, found ? `Промокод «${code}» ${sess.data.promoAction === 'delete' ? 'удалён' : 'де��ктивирован'}.` : 'Промокод не найден.', {}, 1);
+    await sendMessage(peerId, found ? `Промокод «${code}» ${sess.data.promoAction === 'delete' ? 'удалён' : 'де��ктивирован'}.` : 'Промо��од не найден.', {}, 1);
     return true;
   }
 
@@ -2021,7 +2076,7 @@ async function handleAdminTaxiPoints(uid, peerId, text, event) {
   return false;
 }
 
-// ─────────────────────────── TAXI: GROUP 3 DMs ───────────��────
+// ───────────────────────��─── TAXI: GROUP 3 DMs ───────────��────
 const TAXI_STEP = {
   MAIN: 'taxi_main',
   ORDER_NICK: 'taxi_nick',
@@ -2220,7 +2275,7 @@ async function handleTaxiDM(event) {
     await sendMessage(peerId, 'Для трудоустройства обратитесь к администратору.', { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
     return;
   }
-  if (text === 'Частые вопросы') {
+  if (text === 'Час��ые вопросы') {
     await sendMessage(peerId,
       'FAQ такси:\n\n— Как рассчитывается цена?\nПо расстоянию между точками на карте с учётом часа пик (18–22 МСК ×1.3).\n\n— Можно добавить попутчика?\nДа, до 2 попутчиков.\n\n— Комиссия за оплату?\nНаличные — 0%, счёт телефона — 7%, банковский счёт — 5%.',
       { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
@@ -2458,8 +2513,9 @@ async function handleTaxiDM(event) {
       return;
     }
   }
+}
 
-  async function showTaxiConfirm(peerId, uid, sess, groupKey) {
+async function showTaxiConfirm(peerId, uid, sess, groupKey) {
     const passText = sess.data.passengers?.length ? `\nПопутчики: ${sess.data.passengers.join(', ')}` : '';
     const payText = sess.data.payment.type === 'cash' ? 'Наличными' : sess.data.payment.type === 'phone' ? 'Счёт телефона' : 'Банковский счёт';
     const promoText = sess.data.promoDesc ? `\nПромокод: ${sess.data.promoDesc}` : '';
@@ -2471,9 +2527,9 @@ async function handleTaxiDM(event) {
           [{ label: 'Отмена', color: 'negative' }],
         ])
       }, groupKey);
-  }
+}
 
-  function calculateTaxiPrice(from, to) {
+function calculateTaxiPrice(from, to) {
     // Use stored price overrides if available
     if (from.priceOverrides && from.priceOverrides[to.id]) return from.priceOverrides[to.id];
     // Coordinate-based straight-line distance calculation
@@ -2518,7 +2574,7 @@ async function handleTaxiDM(event) {
       const cats = tp.categories.map(c => `• ${c.name} (${tp.points.filter(p => p.categoryId === c.id).length} точек)`).join('\n') || '(нет)';
       await sendMessage(peerId,
         `Точки такси:\n\nКатегории:\n${cats}`,
-        { keyboard: msgKb([[{ label: 'Добавить категорию точек' }, { label: '��обавить точку' }], [{ label: 'Удалить точку' }]]) }, 1);
+        { keyboard: msgKb([[{ label: 'Добавить ка��егорию точек' }, { label: '��обавить точку' }], [{ label: 'Удалить точку' }]]) }, 1);
       return true;
     }
 
@@ -2871,7 +2927,7 @@ async function handleTaxiDM(event) {
       return `• ${c.nick} — ${total}р. (счёт: ${c.bank})${c.delivery ? `\n  Доставка: ${c.delivery}р.` : ''}${c.taxi ? `\n  Такси: ${c.taxi}р.` : ''}`;
     }).join('\n') || '(нет завершённых заказов)';
 
-    const text = `Ежедневный отчёт (${formatDateMSK()}):\n\nЗаказы доставки: ${dayDelivery.length}\nЗаказы такси: ${dayTaxi.length}\n\nВыплаты курьерам:\n${payoutLines}`;
+    const text = `Ежедневный ��тчёт (${formatDateMSK()}):\n\nЗаказы доставки: ${dayDelivery.length}\nЗаказы такси: ${dayTaxi.length}\n\nВыплаты курьерам:\n${payoutLines}`;
     const keyboard = kb([[{ label: 'Обработано', color: 'positive', payload: { action: 'report_processed', date: formatDateMSK() } }]]);
 
     await sendMessage(CHATS.rukovodstvo, text, { keyboard }, 1);
@@ -3593,6 +3649,7 @@ async function handleTaxiDM(event) {
   }
 
   async function pollGroup(groupId, token, groupKey, label) {
+    console.log(`[Bot][${label}] Получаем Long-Poll сервер... groupId=${groupId}`);
     let { key, server, ts } = await getLongPollServer(groupId, token);
     console.log(`[Bot][${label}] Long-poll started, ts=${ts}`);
 
@@ -3698,9 +3755,10 @@ async function handleTaxiDM(event) {
     if (msgId) storage.orderMsgIds.set(order.id, { dispatchMsgId: msgId, chatId });
   }
 
-  // ───��──────────���──────────── ENTRYPOINT ──────────────────────
+  // ─────────────────────────── ENTRYPOINT ──────────────────────
   async function main() {
     console.log('[Bot] Запуск...');
+    console.log('[Bot] Инициализация планировщика отчётов...');
 
     scheduleReports();
 
@@ -3709,23 +3767,29 @@ async function handleTaxiDM(event) {
     ];
 
     if (G2_TOKEN && G2_ID) {
+      console.log('[Bot] Добавляем поллер Группа2...');
       pollers.push(pollGroup(G2_ID, G2_TOKEN, 2, 'Группа2'));
     } else {
       console.warn('[Bot] Группа 2 не настроена (VK_GROUP2_TOKEN / VK_GROUP2_ID)');
     }
 
     if (G3_TOKEN && G3_ID && G3_TOKEN !== 'REPLACE_WITH_GROUP3_TOKEN') {
+      console.log('[Bot] Добавляем поллер Группа3...');
       pollers.push(pollGroup(G3_ID, G3_TOKEN, 3, 'Группа3'));
     } else {
       console.warn('[Bot] Группа 3 не настроена (VK_GROUP3_TOKEN / VK_GROUP3_ID)');
     }
+
+    // Запускаем поллер очереди такси-диспетчерской
+    pollers.push(pollPendingTaxiDispatch());
+    console.log(`[Bot] Всего поллеров запущено: ${pollers.length}`);
 
     await Promise.all(pollers);
   }
 
   main()
     .catch(e => {
-      console.error('[Bot] Fatal:', e.message);
+      console.error('[Bot] Fatal error in main():', e.message);
+      console.error(e.stack);
       process.exit(1);
     });
-}

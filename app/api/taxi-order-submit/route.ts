@@ -35,13 +35,54 @@ function getOrderNumber(): number {
 export async function GET(req: NextRequest) {
   const action = req.nextUrl.searchParams.get('action')
   if (action === 'shift-check') {
-    const online: { sessions?: Record<string, { status?: string; role?: string; nick?: string; org?: string }> } =
-      readJSON(ONLINE_FILE, { sessions: {} }) as { sessions?: Record<string, { status?: string; role?: string; nick?: string; org?: string }> }
+    const online: {
+      sessions?: Record<string, {
+        status?: string
+        online?: boolean
+        role?: string
+        nick?: string
+        org?: string
+        orgs?: string[]
+      }>
+    } = readJSON(ONLINE_FILE, { sessions: {} }) as {
+      sessions?: Record<string, {
+        status?: string
+        online?: boolean
+        role?: string
+        nick?: string
+        org?: string
+        orgs?: string[]
+      }>
+    }
     const sessions = online.sessions || {}
-    const drivers = Object.values(sessions).filter(
-      (s) => s.status === 'online' && (s.org === 'taxi' || s.role === 'rs' || s.role === 'ss')
-    )
-    return NextResponse.json({ ok: true, onShift: drivers.length > 0, drivers: drivers.map(d => ({ nick: d.nick, role: d.role })) })
+
+    // status может быть 'online', 'На смене', 'на смене' — проверяем все варианты
+    // org может быть строкой или массивом (orgs)
+    const drivers = Object.values(sessions).filter((s) => {
+      const isOnline =
+        s.online === true ||
+        (typeof s.status === 'string' && s.status.toLowerCase().includes('смен')) ||
+        s.status === 'online'
+
+      if (!isOnline) return false
+
+      // Роли rs/ss всегда считаются как доступные (руководство такси)
+      if (s.role === 'rs' || s.role === 'ss') return true
+
+      // Проверяем org (строка) или orgs (массив)
+      const orgsArr: string[] = Array.isArray(s.orgs)
+        ? s.orgs
+        : s.org
+        ? [s.org]
+        : []
+      return orgsArr.includes('taxi')
+    })
+
+    return NextResponse.json({
+      ok: true,
+      onShift: drivers.length > 0,
+      drivers: drivers.map((d) => ({ nick: d.nick, role: d.role })),
+    })
   }
   return NextResponse.json({ ok: false, error: 'unknown action' }, { status: 400 })
 }
