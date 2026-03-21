@@ -519,17 +519,22 @@ async function handleDeliveryDM(event) {
   // Показываем главное меню только при явном старте или команде «Главное меню»,
   // но НЕ при sess.step === MAIN с произвольным текстом (иначе любое
   // нераспознанное сообщение сбрасывает флоу в меню).
+  const DELIVERY_MAIN_KB = msgKb([
+    [{ label: 'Каталог', color: 'secondary' }, { label: 'Заказать', color: 'positive' }],
+    [{ label: 'Трудоустройство', color: 'secondary' }, { label: 'Частые вопросы', color: 'secondary' }],
+  ]);
+
   if (text === 'начать' || text === '/start') {
     sess.step = DEL_STEP.MAIN;
     sess.data = {};
-    await sendMessage(peerId,
-      'Добро пожаловать! Выберите раздел:',
-      {
-        keyboard: msgKb([
-          [{ label: 'Каталог', color: 'secondary' }, { label: 'Заказать', color: 'positive' }],
-          [{ label: 'Трудоустройство', color: 'secondary' }, { label: 'Частые вопросы', color: 'secondary' }],
-        ])
-      }, 2);
+    await sendMessage(peerId, 'Добро пожаловать! Выберите раздел:', { keyboard: DELIVERY_MAIN_KB }, 2);
+    return;
+  }
+
+  if (text === 'Главное меню') {
+    sess.step = DEL_STEP.MAIN;
+    sess.data = {};
+    await sendMessage(peerId, 'Главное меню. Выберите раздел:', { keyboard: DELIVERY_MAIN_KB }, 2);
     return;
   }
 
@@ -541,7 +546,7 @@ async function handleDeliveryDM(event) {
       {
         keyboard: msgKb([
           [{ label: 'Каталог', color: 'secondary' }, { label: 'Заказать', color: 'positive' }],
-          [{ label: 'Трудоус����������ройство', color: 'secondary' }, { label: 'Частые вопросы', color: 'secondary' }],
+          [{ label: 'Трудоус������������ройство', color: 'secondary' }, { label: 'Частые вопросы', color: 'secondary' }],
         ])
       }, 2);
     return;
@@ -717,7 +722,7 @@ async function handleDeliveryDM(event) {
     }
     if (text === 'Назад' || text === 'Главное меню') {
       sess.step = DEL_STEP.MAIN; sess.data = {};
-      await sendMessage(peerId, 'Главное меню:', { keyboard: msgKb([[{ label: 'Каталог' }, { label: 'Заказать' }], [{ label: 'Трудоустройство' }, { label: 'Частые вопросы' }]]) }, 2);
+      await sendMessage(peerId, 'Главное меню:', { keyboard: msgKb([[{ label: 'Каталог', color: 'secondary' }, { label: 'Заказать', color: 'positive' }], [{ label: 'Трудоустройство', color: 'secondary' }, { label: 'Частые вопросы', color: 'secondary' }]]) }, 2);
       return;
     }
     return;
@@ -809,7 +814,7 @@ async function handleDeliveryDM(event) {
     sess.data.orderId = orderId;
     const promoText = promoResult ? `\nПромокод: ${promoResult.msg}` : '';
     await sendMessage(peerId, `Заказ оформлен!${promoText}\n\nОжидайте принятия заказа. Вы получите уведомление, когда курьер примет заказ.`,
-      { keyboard: msgKb([[{ label: 'Статус заказа' }, { label: 'Ссылка на курьера' }], [{ label: 'Отменить заказ', color: 'negative' }], [{ label: 'Главное меню', color: 'secondary' }]]) }, 2);
+      { keyboard: msgKb([[{ label: 'Статус заказа' }], [{ label: 'Отменить заказ', color: 'negative' }]]) }, 2);
     return;
   }
 
@@ -824,8 +829,21 @@ async function handleDeliveryDM(event) {
     if (text === 'Ссылка на курьера') {
       const order = storage.activeOrders.get(sess.data.orderId);
       if (!order || !order.courierId) { await sendMessage(peerId, 'Курьер ещё не назначен.', {}, 2); return; }
-      // Send direct VK link without extra confirmation step
-      await sendMessage(peerId, `Ссылка на переписку с курьером: vk.me/id${order.courierId}`, {}, 2);
+      // Сначала спрашиваем у курьера согласие, потом отправляем ссылку клиенту
+      if (!sess.data.courierLinkRequested) {
+        sess.data.courierLinkRequested = true;
+        // Уведомляем курьера и просим согласие
+        await sendMessage(order.courierId,
+          `Клиент ${order.nick} просит вашу ссылку для связи.\nОтветьте «Да» или «Нет»:`,
+          { keyboard: msgKb([[{ label: 'Да — отправить ссылку', color: 'positive', payload: JSON.stringify({ action: 'courier_link_consent', orderId: order.id, clientId: uid }) }], [{ label: 'Нет — отклонить', color: 'negative', payload: JSON.stringify({ action: 'courier_link_deny', orderId: order.id, clientId: uid }) }]]) }, 1);
+        await sendMessage(peerId, 'Запрос отправлен курьеру. Ожидайте ответа.', {}, 2);
+      } else {
+        await sendMessage(peerId, 'Запрос уже отправлен курьеру. Ожидайте ответа.', {}, 2);
+      }
+      return;
+    }
+    if (text === 'Да — отправить ссылку' || text === 'Нет — отклонить') {
+      // Эти ответы обрабатываются в handleGroup1DM — здесь игнорируем
       return;
     }
     if (text === 'Отменить заказ') {
@@ -835,13 +853,36 @@ async function handleDeliveryDM(event) {
         await sendMessage(peerId, 'Отменить можно только заказ, который ещё не принят курьером.', {}, 2);
         return;
       }
+      // Удаляем из памяти
       storage.activeOrders.delete(sess.data.orderId);
+      // Обновляем файл orders.json
+      const ords = readJSON(ORDERS_FILE, { delivery: [], taxi: [] });
+      ords.delivery = ords.delivery.filter(o => o.id !== sess.data.orderId);
+      writeJSON(ORDERS_FILE, ords);
+      // Обновляем сообщение в диспетчерской
+      const ids = storage.orderMsgIds.get(sess.data.orderId);
+      if (ids) {
+        await editMessage(ids.chatId, ids.dispatchMsgId,
+          `Заказ ${getOrderNumDisplay(order, sess.data.orderId)} — ОТМЕНЁН клиентом`, {}, 1);
+        storage.orderMsgIds.delete(sess.data.orderId);
+      }
+      const orderId = sess.data.orderId;
       sess.step = DEL_STEP.MAIN;
       sess.data = {};
       await sendMessage(peerId, 'Заказ отменён.', { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 2);
       return;
     }
-    if (text === 'Главное меню') { sess.step = DEL_STEP.MAIN; sess.data = {}; return; }
+    if (text === 'Главное меню') {
+      // Запрещаем выход в меню пока заказ активен
+      const order = storage.activeOrders.get(sess.data.orderId);
+      if (order && (order.status === 'accepted' || order.status === 'delivering' || order.status === 'arrived')) {
+        await sendMessage(peerId, 'Нельзя выйти в меню пока заказ в обработке. Дождитесь завершения заказа.', {}, 2);
+        return;
+      }
+      sess.step = DEL_STEP.MAIN;
+      sess.data = {};
+      return;
+    }
     return;
   }
 }
@@ -1107,11 +1148,19 @@ async function handleGroup1DM(event) {
     order.eta = text;
     order.status = 'accepted';
 
+    // Обновляем сообщение в диспетчерской — указываем кто принял и статус
+    const acceptMsgIds = storage.orderMsgIds.get(orderId);
+    if (acceptMsgIds) {
+      await editMessage(acceptMsgIds.chatId, acceptMsgIds.dispatchMsgId,
+        `Заказ ${getOrderNumDisplay(order, orderId)} — обрабатывается: ${order.courierNick}\nВремя ожидания: ${order.eta}`,
+        { keyboard: kb([[{ label: `Принято: ${order.courierNick}`, color: 'positive', payload: {} }]]) }, 1);
+    }
+
     // Notify client
     const clientPeer = order.clientId;
     await sendMessage(clientPeer,
       `Ваш заказ принят!\nКурьер: ${order.courierNick}\nПримерное время ожидания: ${order.eta}`,
-      { keyboard: msgKb([[{ label: 'Статус заказа' }, { label: 'Ссылка на курьера' }], [{ label: 'Главное меню', color: 'secondary' }]]) }, 2);
+      { keyboard: msgKb([[{ label: 'Статус заказа' }, { label: 'Ссылка на курьера' }], [{ label: 'Отменить заказ', color: 'negative' }]]) }, 2);
 
     // For delivery: build purchase/cooking screen
     // TAXI DISABLED — buildTaxiDriverScreen отключён
@@ -1129,12 +1178,54 @@ async function handleGroup1DM(event) {
     const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
     if (!order) { await sendMessage(peerId, 'Заказ не найден.', {}, 1); return; }
     const gKey = order.type === 'taxi' ? 3 : 2;
+    // Удаляем из памяти
     storage.activeOrders.delete(orderId);
     storage.activeTaxi.delete(orderId);
+    // Обновляем файл orders.json
+    const cancelOrds = readJSON(ORDERS_FILE, { delivery: [], taxi: [] });
+    const cancelList = order.type === 'taxi' ? cancelOrds.taxi : cancelOrds.delivery;
+    const cancelIdx = cancelList.findIndex(o => o.id === orderId);
+    if (cancelIdx !== -1) { cancelList[cancelIdx].status = 'cancelled'; writeJSON(ORDERS_FILE, cancelOrds); }
+    // Обновляем сообщение в диспетчерской
+    const cancelIds = storage.orderMsgIds.get(orderId);
+    if (cancelIds) {
+      await editMessage(cancelIds.chatId, cancelIds.dispatchMsgId,
+        `Заказ ${getOrderNumDisplay(order, orderId)} — ОТМЕНЁН курьером ${order.courierNick || ''}`, {}, 1);
+      storage.orderMsgIds.delete(orderId);
+    }
+    // Сбрасываем сессию клиента
+    for (const [cUid, cSess] of storage.clientSessions.entries()) {
+      if (cSess.data && cSess.data.orderId === orderId) {
+        cSess.step = DEL_STEP.MAIN;
+        cSess.data = {};
+      }
+    }
     await sendMessage(order.clientId, 'Курьер отменил ваш заказ. Приносим извинения. Пожалуйста, оформите заказ повторно.',
-      { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, gKey);
+      { keyboard: msgKb([[{ label: 'Заказать', color: 'positive' }, { label: 'Главное меню', color: 'secondary' }]]) }, gKey);
     storage.staffSessions.delete(uid);
     await sendMessage(peerId, `Заказ ${getOrderNumDisplay(order, orderId)} отменён.`, {}, 1);
+    return;
+  }
+
+  // ── Courier: courier link consent ────────────────────────
+  if (text === 'Да — отправить ссылку' || text === 'Нет — отклонить') {
+    // Ищем заказ курьера
+    let consentOrder = null;
+    for (const [, o] of storage.activeOrders.entries()) {
+      if (o.courierId === uid) { consentOrder = o; break; }
+    }
+    if (!consentOrder) { await sendMessage(peerId, 'Активный заказ не найден.', {}, 1); return; }
+    const clientId = consentOrder.clientId;
+    if (text === 'Да — отправить ссылку') {
+      await sendMessage(clientId, `Ссылка на переписку с курьером: vk.me/id${uid}`, {}, 2);
+      await sendMessage(peerId, 'Ссылка отправлена клиенту.', {}, 1);
+    } else {
+      // Сбрасываем флаг запроса чтобы можно было попробовать ещё раз
+      const cSess = storage.clientSessions.get(clientId);
+      if (cSess && cSess.data) cSess.data.courierLinkRequested = false;
+      await sendMessage(clientId, 'Курьер отклонил запрос на отправку ссылки.', {}, 2);
+      await sendMessage(peerId, 'Вы отклонили запрос.', {}, 1);
+    }
     return;
   }
 
@@ -1188,7 +1279,7 @@ async function handleGroup1DM(event) {
     sess.step = STAFF_STEP.NONE;
     storage.staffSessions.set(uid, sess);
     await sendMessage(peerId,
-      `Пр��филь создан!\nНик: ${sess.data.nick}\nБанк. счёт: ${sess.data.bank}\n\nТеперь доба��ьте транспортное средство, чтобы принимать заказы.`,
+      `Пр��филь создан!\nНик: ${sess.data.nick}\nБанк. счёт: ${sess.data.bank}\n\nТеперь до��а��ьте транспортное средство, чтобы принимать заказы.`,
       {
         keyboard: msgKb([
           [{ label: 'Автопарк', color: 'positive' }],
@@ -1690,7 +1781,7 @@ async function handleAdminCatalogueSession(uid, peerId, text, event) {
   }
   if (step === 'admin_item_name') {
     sess.data.itemName = text; sess.step = 'admin_item_price'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите стоимость товара (для клиентов, в рублях):', {}, 1);
+    await sendMessage(peerId, 'Введите стоимость товара (дл�� клиентов, в рублях):', {}, 1);
     return true;
   }
   if (step === 'admin_item_price') {
@@ -2940,7 +3031,7 @@ async function handleStatsCommand(event, groupKey) {
 
   const msgCount = myStats.msgCount || 0;
 
-  const text2 = `Статистика:\n\nВсего онлайн: ${msToHuman(totalMs)}\nОнлайн сегодня: ${msToHuman(todayMs)}\nОнлайн за неделю: ${msToHuman(weekMs)}\nТоп по онлайну за неделю: ${myRank > 0 ? myRank + ' место' : '—'}${msgCount ? `\nСообщений: ${msgCount}` : ''}`;
+  const text2 = `Статистика:\n\nВсего онлайн: ${msToHuman(totalMs)}\nОнлайн сегодня: ${msToHuman(todayMs)}\nОнлайн за ��еделю: ${msToHuman(weekMs)}\nТоп по онлайну за неделю: ${myRank > 0 ? myRank + ' место' : '—'}${msgCount ? `\nСообщений: ${msgCount}` : ''}`;
 
   await sendMessage(peerId, text2, { keyboard: journalKeyboard() }, gk);
 }
@@ -3578,14 +3669,30 @@ async function handleCallback(event, groupKey) {
     if (idx !== -1) list[idx] = order;
     writeJSON(ORDERS_FILE, ords);
 
+    // Обновляем сообщение в диспетчерской — заказ выполнен
+    const finishIds = storage.orderMsgIds.get(orderId);
+    if (finishIds) {
+      await editMessage(finishIds.chatId, finishIds.dispatchMsgId,
+        `Заказ ${getOrderNumDisplay(order, orderId)} — ВЫПОЛНЕН курьером ${order.courierNick || ''}`, {}, 1);
+      storage.orderMsgIds.delete(orderId);
+    }
+
     storage.activeOrders.delete(orderId);
     storage.activeTaxi.delete(orderId);
+
+    // Сбрасываем сессию клиента
+    for (const [, cSess] of storage.clientSessions.entries()) {
+      if (cSess.data && cSess.data.orderId === orderId) {
+        cSess.step = DEL_STEP.MAIN;
+        cSess.data = {};
+      }
+    }
 
     // Notify client
     const reviewLink = `vk.com/wall-${G1_ID}?w=wall-${G1_ID}_1`; // placeholder
     await sendMessage(order.clientId,
       `Заказ завершён! Спасибо!\nОставьте отзыв или жалобу: ${reviewLink}`,
-      { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) },
+      { keyboard: msgKb([[{ label: 'Каталог', color: 'secondary' }, { label: 'Заказать', color: 'positive' }], [{ label: 'Трудоустройство', color: 'secondary' }, { label: 'Частые вопросы', color: 'secondary' }]]) },
       order.type === 'taxi' ? 3 : 2);
 
     await sendMessage(uid, `Заказ ${getOrderNumDisplay(order, orderId)} завершён. Молодец!`, {}, 1);
@@ -3855,7 +3962,7 @@ if (false) { // TAXI_DISPATCH_DISABLED_START
 // ─────────────────────────── ENTRYPOINT ──────────────────────
 async function main() {
   console.log('[Bot] Запуск...');
-  console.log('[Bot] Инициализация планировщика отчётов...');
+  console.log('[Bot] Инициализация планир��вщика отчётов...');
 
   scheduleReports();
 
