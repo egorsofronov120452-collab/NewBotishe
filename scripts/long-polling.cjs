@@ -541,7 +541,7 @@ async function handleDeliveryDM(event) {
       {
         keyboard: msgKb([
           [{ label: 'Каталог', color: 'secondary' }, { label: 'Заказать', color: 'positive' }],
-          [{ label: 'Трудоустройство', color: 'secondary' }, { label: 'Частые вопросы', color: 'secondary' }],
+          [{ label: 'Трудоус��ройство', color: 'secondary' }, { label: 'Частые вопросы', color: 'secondary' }],
         ])
       }, 2);
     return;
@@ -708,7 +708,7 @@ async function handleDeliveryDM(event) {
     }
     if (text === 'Оформить заказ') {
       if (!sess.data.basket || sess.data.basket.length === 0) {
-        await sendMessage(peerId, 'Корзина пуста. ��обавьте товары.', {}, 2);
+        await sendMessage(peerId, 'Корзина пуста. ����обавьте товары.', {}, 2);
         return;
       }
       sess.step = DEL_STEP.CHECKOUT_NICK;
@@ -1059,23 +1059,25 @@ async function buildPurchaseScreen(uid, order) {
   order.purchaseMsgId = msgId;
 }
 
+/* TAXI DISABLED — buildTaxiDriverScreen
 async function buildTaxiDriverScreen(uid, order) {
   const passText = order.passengers && order.passengers.length
     ? `\nПопутчики: ${order.passengers.join(', ')}`
     : '';
   const payText = order.payment?.type === 'cash' ? 'Наличными'
-    : order.payment?.type === 'phone' ? 'Счёт телефона' : 'Б��нковс��ий счёт';
+    : order.payment?.type === 'phone' ? 'Счёт телефона' : 'Банковский счёт';
   const text = `Такси ${getOrderNumDisplay(order)}\n\nКлиент: ${order.nick}${passText}\nОткуда: ${order.from?.name || '—'}\nКуда: ${order.to?.name || '—'}\nСумма: ${order.finalPrice}р. (${payText})`;
 
   const buttons = [
     [{ label: 'Прибыл к клиенту', color: 'positive', payload: { action: 'courier_arrived', orderId: order.id } }],
-    [{ label: 'Плат��о�� ожидание', color: 'secondary', payload: { action: 'taxi_paid_waiting', orderId: order.id } }],
+    [{ label: 'Платное ожидание', color: 'secondary', payload: { action: 'taxi_paid_waiting', orderId: order.id } }],
     [{ label: 'Завершить поездку', color: 'positive', payload: { action: 'finish_order', orderId: order.id } }],
     [{ label: `Связь с клиентом: vk.me/id${order.clientId}`, color: 'secondary', payload: { action: 'noop' } }],
   ];
   const msgId = await sendMessage(uid, text, { keyboard: kb(buttons) }, 1);
   order.driverMsgId = msgId;
 }
+TAXI DISABLED */
 
 // ─────────────────────────── STAFF: GROUP 1 DMs ────────��──────
 const STAFF_STEP = {
@@ -1110,7 +1112,7 @@ async function handleGroup1DM(event) {
   const sess = storage.staffSessions.get(uid) || { step: STAFF_STEP.NONE, data: {} };
   const step = sess.step;
 
-  // ── Courier accept flow ───────────────────────────────────
+  // ── Courier accept flow ───────────��───────────────────────
   if (step === 'courier_accept_nick') {
     if (text === 'Отмена') { storage.staffSessions.delete(uid); await sendMessage(peerId, 'Отменено.', {}, 1); return; }
     sess.data.courierNick = text;
@@ -1138,12 +1140,14 @@ async function handleGroup1DM(event) {
       `Ваш заказ принят!\nКурьер: ${order.courierNick}\nПримерное время ожидания: ${order.eta}`,
       { keyboard: msgKb([[{ label: 'Статус заказа' }, { label: 'Ссылка на курьера' }], [{ label: 'Главное меню', color: 'secondary' }]]) }, 2);
 
-    // For delivery: build purchase/cooking screen; for taxi: show driver action screen
+    // For delivery: build purchase/cooking screen; for taxi: disabled
+    /* TAXI DISABLED — buildTaxiDriverScreen call
     if (order.type === 'taxi') {
       await buildTaxiDriverScreen(uid, order);
     } else {
+    TAXI DISABLED */
       await buildPurchaseScreen(uid, order);
-    }
+    /* TAXI DISABLED */ }
 
     storage.staffSessions.delete(uid);
     return;
@@ -1175,8 +1179,10 @@ async function handleGroup1DM(event) {
     if (adminResult2) return;
     const adminResult3 = await handleAdminVehiclesSession(uid, peerId, text, event);
     if (adminResult3) return;
+    /* TAXI DISABLED — handleAdminTaxiPoints call
     const adminResult4 = await handleAdminTaxiPoints(uid, peerId, text, event);
     if (adminResult4) return;
+    TAXI DISABLED */
   }
 
   // ── Staff registration / profile ─────────────────────────
@@ -1360,11 +1366,13 @@ async function handleGroup1DM(event) {
     if (adminResult3) return;
   }
 
+  /* TAXI DISABLED — Управление точками такси button
   // Кнопка «Управление точками такси»
   if (isRs && text === 'Управление точками такси') {
-    const adminResult4 = await handleAdminTaxiPoints(uid, peerId, text, event);
-    if (adminResult4) return;
+  const adminResult4 = await handleAdminTaxiPoints(uid, peerId, text, event);
+  if (adminResult4) return;
   }
+  TAXI DISABLED */
 
   // Default — нер����с����ознанный текст, показываем меню
   await showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role);
@@ -1383,9 +1391,9 @@ async function showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role) {
     rows.push([{ label: 'Список сотрудников', color: 'secondary' }, { label: 'Профиль сотрудника', color: 'secondary' }]);
   }
   if (isRs) {
-    rows.push([{ label: 'Управление промокодами', color: 'primary' }]);
-    rows.push([{ label: '��правление авто', color: 'primary' }]);
-    rows.push([{ label: 'Управление точками такси', color: 'primary' }]);
+  rows.push([{ label: 'Управление промокодами', color: 'primary' }]);
+  rows.push([{ label: 'Управление авто', color: 'primary' }]);
+  /* TAXI DISABLED */ // rows.push([{ label: 'Управление точками такси', color: 'primary' }]);
   }
 
   const onlineInfo = storage.online.get(uid);
@@ -1808,17 +1816,18 @@ async function handleAdminPromosSession(uid, peerId, text, event, role) {
   const step = sess.step;
 
   if (text === 'Управление промокодами') {
-    const promos = readJSON(PROMOS_FILE, { delivery: [], taxi: [] });
-    const delText = promos.delivery.map(p => `• ${p.code} | ${p.type} | ${p.active ? 'активен' : 'неакт.'}`).join('\n') || '(нет)';
-    const taxiText = promos.taxi.map(p => `• ${p.code} | ${p.type} | ${p.active ? 'активен' : 'неакт.'}`).join('\n') || '(нет)';
-    await sendMessage(peerId,
-      `Промокоды:\n\nДоставка:\n${delText}\n\nТакси:\n${taxiText}`,
-      { keyboard: msgKb([[{ label: 'Добавить промокод доставки' }, { label: 'Добавить промокод такси' }], [{ label: 'Удалить промокод' }, { label: 'Деактивировать промокод' }]]) }, 1);
-    return true;
+  const promos = readJSON(PROMOS_FILE, { delivery: [], taxi: [] });
+  const delText = promos.delivery.map(p => `• ${p.code} | ${p.type} | ${p.active ? 'активен' : 'неакт.'}`).join('\n') || '(нет)';
+  /* TAXI DISABLED */ // const taxiText = promos.taxi.map(p => `• ${p.code} | ${p.type} | ${p.active ? 'активен' : 'неакт.'}`).join('\n') || '(нет)';
+  await sendMessage(peerId,
+  /* TAXI DISABLED: `Промокоды:\n\nДоставка:\n${delText}\n\nТакси:\n${taxiText}`, */
+  `Промокоды:\n\nДоставка:\n${delText}`,
+  { keyboard: msgKb([[{ label: 'Добавить промокод доставки' }/* TAXI DISABLED: , { label: 'Добавить промокод такси' } */], [{ label: 'Удалить промокод' }, { label: 'Деактивировать промокод' }]]) }, 1);
+  return true;
   }
 
-  if (text === 'Добавить промокод достав��и' || text === 'Добавить промокод такси') {
-    sess.data.promoService = text.includes('такси') ? 'taxi' : 'delivery';
+  if (text === 'Добавить промокод доставки' /* TAXI DISABLED: || text === 'Добавить промокод такси' */) {
+  sess.data.promoService = /* TAXI DISABLED: text.includes('такси') ? 'taxi' : */ 'delivery';
     sess.step = 'admin_promo_code'; storage.adminSessions.set(uid, sess);
     await sendMessage(peerId, 'Введите код промокода:', {}, 1);
     return true;
@@ -1914,6 +1923,7 @@ async function saveNewPromo(uid, peerId, sess, extra) {
   await sendMessage(peerId, `Промокод «${newPromo.code}» создан (${newPromo.type}).`, {}, 1);
 }
 
+/* TAXI DISABLED — TAXI POINTS ADMIN (handleAdminTaxiPoints)
 // ─────────────────────────── TAXI POINTS ADMIN ────────────────
 // Управление точками маршрута через ЛС группы 1 (РС)
 async function handleAdminTaxiPoints(uid, peerId, text, event) {
@@ -2075,8 +2085,10 @@ async function handleAdminTaxiPoints(uid, peerId, text, event) {
 
   return false;
 }
+TAXI DISABLED */
 
-// ───────────────────────��─── TAXI: GROUP 3 DMs ───────────��────
+/* TAXI DISABLED — TAXI GROUP 3 DMs
+// ─────────────────────────── TAXI: GROUP 3 DMs ───────────────
 const TAXI_STEP = {
   MAIN: 'taxi_main',
   ORDER_NICK: 'taxi_nick',
@@ -2563,7 +2575,9 @@ function calculateTaxiPrice(from, to) {
     // Reuse general promo session
     return handleAdminPromosSession(uid, peerId, text, event, 'rs');
   }
+TAXI DISABLED */
 
+  /* TAXI DISABLED — handleTaxiPointAdmin
   // ─────────────────────────── TAXI: POINT MANAGEMENT (group 1 DM) ──
   async function handleTaxiPointAdmin(uid, peerId, text, event) {
     const sess = storage.adminSessions.get(uid) || { step: null, data: {} };
@@ -2574,7 +2588,7 @@ function calculateTaxiPrice(from, to) {
       const cats = tp.categories.map(c => `• ${c.name} (${tp.points.filter(p => p.categoryId === c.id).length} точек)`).join('\n') || '(нет)';
       await sendMessage(peerId,
         `Точки такси:\n\nКатегории:\n${cats}`,
-        { keyboard: msgKb([[{ label: 'Добавить ка��егорию точек' }, { label: '��обавить точку' }], [{ label: 'Удалить точку' }]]) }, 1);
+        { keyboard: msgKb([[{ label: 'Добав��ть ка��егорию точек' }, { label: '��обавить точку' }], [{ label: 'Удалить точку' }]]) }, 1);
       return true;
     }
 
@@ -2654,6 +2668,7 @@ function calculateTaxiPrice(from, to) {
 
     return false;
   }
+  TAXI DISABLED */
 
   // Постоянная клавиатура журнала (зелёный=онлайн, синий=афк, красный=вышел)
   function journalKeyboard() {
@@ -2927,7 +2942,7 @@ function calculateTaxiPrice(from, to) {
       return `• ${c.nick} — ${total}р. (счёт: ${c.bank})${c.delivery ? `\n  Доставка: ${c.delivery}р.` : ''}${c.taxi ? `\n  Такси: ${c.taxi}р.` : ''}`;
     }).join('\n') || '(нет завершённых заказов)';
 
-    const text = `Ежедневный ��тчёт (${formatDateMSK()}):\n\nЗаказы доставки: ${dayDelivery.length}\nЗаказы такси: ${dayTaxi.length}\n\nВыплаты курьерам:\n${payoutLines}`;
+    const text = `Еже��невный ��тчёт (${formatDateMSK()}):\n\nЗаказы доставки: ${dayDelivery.length}\nЗаказы такси: ${dayTaxi.length}\n\nВыплаты курьерам:\n${payoutLines}`;
     const keyboard = kb([[{ label: 'Обработано', color: 'positive', payload: { action: 'report_processed', date: formatDateMSK() } }]]);
 
     await sendMessage(CHATS.rukovodstvo, text, { keyboard }, 1);
@@ -3177,7 +3192,7 @@ function calculateTaxiPrice(from, to) {
     //   !кик @id12345                           — кик из текущего чата
     //   !кик @id12345 все Нарушение правил      — кик из ВСЕХ чатов организации
     //   !кик @id12345 доставка Флуд             — кик из всех чатов доставки
-    //   !кик @id12345 такси                     — кик из всех чатов такси
+    //   !кик @id12345 такси                     — кик из всех чатов та��си
     if (cmd === '!кик') {
       if (!isSs) { await sendMessage(peerId, 'Только РС и СС', {}, groupKey); return true; }
 
@@ -3501,7 +3516,7 @@ function calculateTaxiPrice(from, to) {
       return;
     }
 
-    // Taxi: paid waiting
+    /* TAXI DISABLED — taxi_paid_waiting callback
     if (action === 'taxi_paid_waiting') {
       const { orderId } = payload;
       const order = storage.activeTaxi.get(orderId);
@@ -3511,6 +3526,7 @@ function calculateTaxiPrice(from, to) {
       await sendMessage(uid, 'Платное ожидание включено.', {}, 1);
       return;
     }
+    TAXI DISABLED */
 
     // Report processed
     if (action === 'report_processed') {
@@ -3583,8 +3599,10 @@ function calculateTaxiPrice(from, to) {
         if (peerId > 0 && peerId === uid) {
           if (groupKey === 2) {
             await handleDeliveryDM(msg);
+          /* TAXI DISABLED — groupKey 3 handler
           } else if (groupKey === 3) {
             await handleTaxiDM(msg);
+          TAXI DISABLED */
           } else if (groupKey === 1) {
             // Handle vehicle add steps first
             const sess = storage.staffSessions.get(uid) || { step: null };
@@ -3594,12 +3612,14 @@ function calculateTaxiPrice(from, to) {
               const handled = await handleStaffVehicleAdd(uid, peerId, text, msg);
               if (handled) return;
             }
+            /* TAXI DISABLED — taxi point admin in event router
             // Taxi point admin
             const role = await getUserRole(uid);
             if (role === 'rs' || role === 'ss') {
               const handled2 = await handleTaxiPointAdmin(uid, peerId, text, msg);
               if (handled2) return;
             }
+            TAXI DISABLED */
             await handleGroup1DM(msg);
           }
         }
@@ -3682,6 +3702,7 @@ function calculateTaxiPrice(from, to) {
     }
   }
 
+  /* TAXI DISABLED — MINI APP DISPATCH POLLER
   // ─────────────────────────── MINI APP DISPATCH POLLER ────────
   // Polls taxi_pending_dispatch.json every 3 sec and sends new taxi orders to dispatch chat
   const TAXI_PENDING_DISPATCH_FILE = path.join(DATA_DIR, 'taxi_pending_dispatch.json');
@@ -3754,6 +3775,7 @@ function calculateTaxiPrice(from, to) {
     if (!msgId) msgId = await sendMessage(chatId, text, { keyboard, attachment: attachment || undefined }, 3);
     if (msgId) storage.orderMsgIds.set(order.id, { dispatchMsgId: msgId, chatId });
   }
+  TAXI DISABLED */
 
   // ─────────────────────────── ENTRYPOINT ──────────────────────
   async function main() {
@@ -3773,6 +3795,7 @@ function calculateTaxiPrice(from, to) {
       console.warn('[Bot] Группа 2 не настроена (VK_GROUP2_TOKEN / VK_GROUP2_ID)');
     }
 
+    /* TAXI DISABLED — Group 3 poller + taxi dispatch poller
     if (G3_TOKEN && G3_ID && G3_TOKEN !== 'REPLACE_WITH_GROUP3_TOKEN') {
       console.log('[Bot] Добавляем поллер Группа3...');
       pollers.push(pollGroup(G3_ID, G3_TOKEN, 3, 'Группа3'));
@@ -3782,6 +3805,7 @@ function calculateTaxiPrice(from, to) {
 
     // Запускаем поллер очереди такси-диспетчерской
     pollers.push(pollPendingTaxiDispatch());
+    TAXI DISABLED */
     console.log(`[Bot] Всего поллеров запущено: ${pollers.length}`);
 
     await Promise.all(pollers);
