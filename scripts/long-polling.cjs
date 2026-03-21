@@ -257,10 +257,10 @@ async function sendMessage(peerId, message, params = {}, groupKey = 1) {
 }
 
 /** Edit an existing message */
-async function editMessage(peerId, cmid, message, params = {}, groupKey = 1) {
+async function editMessage(peerId, msgId, message, params = {}, groupKey = 1) {
   try {
     return await callVK('messages.edit', {
-      peer_id: peerId, conversation_message_id: cmid, message, keep_forward_messages: 1, ...params,
+      peer_id: peerId, message_id: msgId, message, keep_forward_messages: 1, ...params,
     }, groupKey);
   } catch (e) {
     console.error('[Bot] editMessage error:', e.message);
@@ -1115,14 +1115,16 @@ async function buildPurchaseScreen(uid, order) {
 // ─────────────────────────── COURIER BUTTONS RESTORE ─────────
 /** После ответа на запрос ссылки восстанавливаем экран закупок/доставки курьера */
 async function restoreCourierOrderButtons(uid, peerId, order) {
+  // Сначала скрываем клавиатуру с кнопками согласия
+  const HIDE_KB = JSON.stringify({ one_time: true, buttons: [] });
+
   if (!order) {
-    await sendMessage(peerId, 'Заказ завершён.', { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 1);
+    await sendMessage(peerId, 'Заказ завершён.', { keyboard: HIDE_KB }, 1);
     return;
   }
   const status = order.status;
   if (status === 'accepted') {
-    // Курьер на этапе закупок/готовки — восстанавливаем purchase screen
-    if (order.purchaseMsgId && order.purchaseItems) {
+    if (order.purchaseItems) {
       const buttons = order.purchaseItems.map(it => ([{
         label: `${it.bought ? '[✓]' : '[ ]'} ${it.name} x${it.qty}`,
         color: it.bought ? 'positive' : 'secondary',
@@ -1135,22 +1137,22 @@ async function restoreCourierOrderButtons(uid, peerId, order) {
         buttons.push([{ label: 'Готово! Еду к клиенту', color: 'positive', payload: { action: 'start_deliver', orderId: order.id } }]);
       }
       buttons.push([{ label: 'Отменить заказ', color: 'negative', payload: { action: 'cancel_order', orderId: order.id } }]);
-      await sendMessage(peerId, `Ваш активный заказ ${getOrderNumDisplay(order, order.id)} — продолжайте:`, { keyboard: kb(buttons) }, 1);
+      // Отправляем новое сообщение и обновляем purchaseMsgId, чтобы toggle_buy редактировал правильное сообщение
+      const newMsgId = await sendMessage(peerId, `Заказ ${getOrderNumDisplay(order, order.id)} — продолжайте:`, { keyboard: kb(buttons) }, 1);
+      if (newMsgId) order.purchaseMsgId = newMsgId;
     } else {
-      await sendMessage(peerId, `Продолжайте заказ ${getOrderNumDisplay(order, order.id)}.`, {}, 1);
+      await sendMessage(peerId, `Продолжайте заказ ${getOrderNumDisplay(order, order.id)}.`, { keyboard: HIDE_KB }, 1);
     }
   } else if (status === 'delivering') {
-    // Курьер едет к клиенту
     await sendMessage(peerId,
       `Заказ ${getOrderNumDisplay(order, order.id)} — вы едете к клиенту.\nНажмите когда прибудете:`,
       { keyboard: kb([[{ label: 'Прибыл к клиенту', color: 'positive', payload: { action: 'courier_arrived', orderId: order.id } }], [{ label: 'Отменить заказ', color: 'negative', payload: { action: 'cancel_order', orderId: order.id } }]]) }, 1);
   } else if (status === 'arrived') {
-    // Курьер на месте
     await sendMessage(peerId,
       `Заказ ${getOrderNumDisplay(order, order.id)} — вы на месте у клиента.\nНажмите «Доставлен» после передачи:`,
       { keyboard: kb([[{ label: 'Доставлен', color: 'positive', payload: { action: 'finish_order', orderId: order.id } }]]) }, 1);
   } else {
-    await sendMessage(peerId, `Заказ ${getOrderNumDisplay(order, order.id)} — статус: ${status}.`, { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 1);
+    await sendMessage(peerId, `Заказ ${getOrderNumDisplay(order, order.id)} — статус: ${status}.`, { keyboard: HIDE_KB }, 1);
   }
 }
 
@@ -1268,7 +1270,7 @@ async function handleGroup1DM(event) {
     if (!consentOrder) { await sendMessage(peerId, 'Активный заказ не найден.', {}, 1); return; }
     const clientId = consentOrder.clientId;
     if (text === 'Да — отправить ссылку') {
-      await sendMessage(clientId, `Ссылка на переписку с курьером: vk.me/id${uid}`, {}, 2);
+      await sendMessage(clientId, `Ссылка на переписку с курьером: vk.com/id${uid}`, {}, 2);
     } else {
       const cSess = storage.clientSessions.get(clientId);
       if (cSess && cSess.data) cSess.data.courierLinkRequested = false;
@@ -1287,7 +1289,7 @@ async function handleGroup1DM(event) {
     }
     if (!courierOrder) { await sendMessage(peerId, 'У вас нет активного заказа.', {}, 1); return; }
     // Курьеру сразу — ссылка на клиента, без лишних вопросов
-    await sendMessage(peerId, `Ссылка на клиента: vk.me/id${courierOrder.clientId}`, {}, 1);
+    await sendMessage(peerId, `Ссылка на клиента: vk.com/id${courierOrder.clientId}`, {}, 1);
     return;
   }
 
@@ -2807,7 +2809,7 @@ if (false) { // TAXI_DISABLED_START
     const sess = storage.adminSessions.get(uid) || { step: null, data: {} };
     const step = sess.step;
 
-    if (text === 'Добавить промокод такси' || text === 'Управление промокодами такси') {
+    if (text === 'До��авить промокод такси' || text === 'Управление промокодами такси') {
       sess.data.promoService = 'taxi'; sess.step = 'admin_promo_code';
       storage.adminSessions.set(uid, sess);
       await sendMessage(peerId, 'Введите код промокода:', {}, 3);
@@ -3327,7 +3329,7 @@ async function handleChatCommand(event, groupKey) {
     return true;
   }
 
-  // !стата — работает в любом чате с правильным токеном группы
+  // !стата �� работает в любом чате с правильным токеном группы
   if (cmd === '!стата') {
     await handleStatsCommand(event, groupKey);
     return true;
