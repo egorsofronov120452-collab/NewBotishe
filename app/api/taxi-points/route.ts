@@ -1,3 +1,20 @@
+// =============================================================
+// TAXI ВРЕМЕННО ОТКЛЮЧЁН — идёт работа над модулем доставки.
+// Оригинальный код сохранён ниже в комментарии.
+// Для включения: раскомментировать блок и удалить заглушку.
+// =============================================================
+
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+
+export async function GET(_req: NextRequest) {
+  return NextResponse.json({ disabled: true, message: 'Такси временно отключено' }, { status: 503 })
+}
+export async function POST(_req: NextRequest) {
+  return NextResponse.json({ disabled: true, message: 'Такси временно отключено' }, { status: 503 })
+}
+
+/*
 import { NextResponse } from 'next/server'
 import { readFileSync, existsSync } from 'fs'
 import path from 'path'
@@ -18,7 +35,6 @@ export async function GET() {
       points = Array.isArray(data.points) ? data.points : []
     }
 
-    // Load map image URL if exists
     if (existsSync(TAXI_MAP_FILE)) {
       try {
         const mapRaw = readFileSync(TAXI_MAP_FILE, 'utf8')
@@ -27,12 +43,9 @@ export async function GET() {
       } catch {}
     }
 
-    return NextResponse.json({
-      categories,
-      points,
-      mapImageUrl,
-    })
+    return NextResponse.json({ categories, points, mapImageUrl })
   } catch {
     return NextResponse.json({ categories: [], points: [], mapImageUrl: '' })
   }
 }
+*/
