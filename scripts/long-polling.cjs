@@ -714,9 +714,15 @@ async function handleDeliveryDM(event) {
     }
     if (text === 'Оформить заказ') {
       if (!sess.data.basket || sess.data.basket.length === 0) {
-        await sendMessage(peerId, 'Корзина п��ст��. ����обавьте товары.', {}, 2);
+        await sendMessage(peerId, 'Корзина пуста. Добавьте товары.', {}, 2);
         return;
       }
+      // Сначала промокод, потом ник и адрес
+      sess.step = DEL_STEP.PROMO;
+      sess.data.promo = null;
+      await sendMessage(peerId, buildBasketText(sess.data.basket) + '\n\nЕсть промокод? Введите его или нажмите «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить', color: 'secondary' }], [{ label: 'Отмена', color: 'negative' }]]) }, 2);
+      return;
+    }
       sess.step = DEL_STEP.CHECKOUT_NICK;
       await sendMessage(peerId, buildBasketText(sess.data.basket) + '\n\nВведите ваш никнейм в игре:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 2);
       return;
@@ -754,68 +760,88 @@ async function handleDeliveryDM(event) {
     if (text === 'Отмена') { sess.step = DEL_STEP.BASKET; await showBasket(peerId, uid, sess, 2); return; }
     sess.data.address = text;
     sess.step = DEL_STEP.CHECKOUT_CONF;
-    const summary = `Проверьте данные заказа:\n\nНикнейм: ${sess.data.nick}\nМесто: ${sess.data.address}\n\n${buildBasketText(sess.data.basket)}\n\nВсё верно?`;
+    const promoResult = sess.data.promo || null;
+    const costTotalPreview = sess.data.basket.reduce((sum, it) => sum + (it.cost || 0) * it.qty, 0);
+    const rawTotal = basketTotal(sess.data.basket);
+    let previewTotal = rawTotal - (promoResult?.discount || 0);
+    if (promoResult?.promo?.type === 'free_delivery') previewTotal = costTotalPreview;
+    const promoLine = promoResult ? `\nПромокод: ${promoResult.msg}` : '';
+    const summary = `Проверьте данные заказа:\n\nНикнейм: ${sess.data.nick}\nМесто: ${sess.data.address}\n\n${buildBasketText(sess.data.basket)}${promoLine}\nИтого к оплате: ${previewTotal}р.\n\nВсё верно?`;
     await sendMessage(peerId, summary, { keyboard: msgKb([[{ label: 'Верно', color: 'positive' }, { label: 'Изменить', color: 'secondary' }]]) }, 2);
     return;
   }
 
-  if (sess.step === DEL_STEP.CHECKOUT_CONF) {
-    if (text === 'Изменить') { sess.step = DEL_STEP.CHECKOUT_NICK; await sendMessage(peerId, 'Введите никнейм:', {}, 2); return; }
-    if (text === 'Верно') {
-      sess.step = DEL_STEP.PROMO;
-      await sendMessage(peerId, 'Есть промокод? Введите его или нажмите «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить', color: 'secondary' }]]) }, 2);
-      return;
-    }
-    return;
-  }
-
+  // ── Промокод (первый шаг после корзины) ───────────────────
   if (sess.step === DEL_STEP.PROMO) {
-    let promoResult = null;
+    if (text === 'Отмена') { sess.step = DEL_STEP.BASKET; await showBasket(peerId, uid, sess, 2); return; }
     if (text !== 'Пропустить') {
-      promoResult = applyPromo(text, 'delivery', sess.data.basket);
+      const promoResult = applyPromo(text, 'delivery', sess.data.basket);
       if (!promoResult.ok) {
-        await sendMessage(peerId, promoResult.msg + '\nВведите другой промокод или нажмите «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить', color: 'secondary' }]]) }, 2);
+        await sendMessage(peerId, promoResult.msg + '\nВведите другой промокод или нажмите «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить', color: 'secondary' }], [{ label: 'Отмена', color: 'negative' }]]) }, 2);
         return;
       }
       sess.data.promo = promoResult;
       if (promoResult.freeItem) sess.data.basket.push(promoResult.freeItem);
     }
+    // Промокод применён/пропущен → вводим ник
+    sess.step = DEL_STEP.CHECKOUT_NICK;
+    const promoLine = sess.data.promo ? `Промокод: ${sess.data.promo.msg}\n\n` : '';
+    await sendMessage(peerId, `${promoLine}Введите ваш никнейм в игре:`, { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 2);
+    return;
+  }
 
-    // Create order
-    const orderId = genId();
-    const orderNum = incrementOrderNumber('delivery');
-    // Calculate cost (sebestoimost)
-    const costTotal = sess.data.basket.reduce((sum, it) => sum + (it.cost || 0) * it.qty, 0);
-    const order = {
-      id: orderId,
-      num: orderNum,
-      type: 'delivery',
-      clientId: uid,
-      nick: sess.data.nick,
-      address: sess.data.address,
-      basket: [...sess.data.basket],
-      total: basketTotal(sess.data.basket) - (promoResult?.discount || 0),
-      costTotal: costTotal,
-      promo: promoResult ? promoResult.promo?.code : null,
-      promoDesc: promoResult ? promoResult.msg : null,
-      status: 'pending',
-      createdAt: Date.now(),
-    };
-    storage.activeOrders.set(orderId, order);
+  if (sess.step === DEL_STEP.CHECKOUT_CONF) {
+    if (text === 'Изменить') {
+      // Сбрасываем всё и возвращаем к промокоду
+      sess.data.promo = null;
+      sess.step = DEL_STEP.PROMO;
+      await sendMessage(peerId, buildBasketText(sess.data.basket) + '\n\nЕсть промокод? Введите его или нажмите «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить', color: 'secondary' }], [{ label: 'Отмена', color: 'negative' }]]) }, 2);
+      return;
+    }
+    if (text === 'Верно') {
+      const promoResult = sess.data.promo || null;
+      // Create order
+      const orderId = genId();
+      const orderNum = incrementOrderNumber('delivery');
+      const costTotal = sess.data.basket.reduce((sum, it) => sum + (it.cost || 0) * it.qty, 0);
+      const rawTotal = basketTotal(sess.data.basket);
+      let finalTotal = rawTotal - (promoResult?.discount || 0);
+      if (promoResult?.promo?.type === 'free_delivery') {
+        // бесплатная доставка = клиент платит себестоимость (нет дохода и зп курьеру с этого)
+        finalTotal = costTotal;
+      }
+      const order = {
+        id: orderId,
+        num: orderNum,
+        type: 'delivery',
+        clientId: uid,
+        nick: sess.data.nick,
+        address: sess.data.address,
+        basket: [...sess.data.basket],
+        total: finalTotal,
+        costTotal: costTotal,
+        promo: promoResult ? promoResult.promo?.code : null,
+        promoDesc: promoResult ? promoResult.msg : null,
+        status: 'pending',
+        createdAt: Date.now(),
+      };
+      storage.activeOrders.set(orderId, order);
 
-    // Persist
-    const ords = readJSON(ORDERS_FILE, { delivery: [], taxi: [] });
-    ords.delivery.push(order);
-    writeJSON(ORDERS_FILE, ords);
+      // Persist
+      const ords = readJSON(ORDERS_FILE, { delivery: [], taxi: [] });
+      ords.delivery.push(order);
+      writeJSON(ORDERS_FILE, ords);
 
-    // Send to dispatch chat
-    await sendOrderToDispatch(order);
+      // Send to dispatch chat
+      await sendOrderToDispatch(order);
 
-    sess.step = DEL_STEP.WAITING;
-    sess.data.orderId = orderId;
-    const promoText = promoResult ? `\nПромокод: ${promoResult.msg}` : '';
-    await sendMessage(peerId, `Заказ оформлен!${promoText}\n\nОжидайте принятия заказа. Вы получите уведомление, когда курьер примет заказ.`,
-      { keyboard: msgKb([[{ label: 'Статус заказа' }], [{ label: 'Отменить заказ', color: 'negative' }]]) }, 2);
+      sess.step = DEL_STEP.WAITING;
+      sess.data.orderId = orderId;
+      const promoText = promoResult ? `\nПромокод: ${promoResult.msg}` : '';
+      await sendMessage(peerId, `Заказ оформлен!${promoText}\n\nОжидайте принятия заказа. Вы получите уведомление, когда курьер примет заказ.`,
+        { keyboard: msgKb([[{ label: 'Статус заказа' }], [{ label: 'Отменить заказ', color: 'negative' }]]) }, 2);
+      return;
+    }
     return;
   }
 
@@ -994,7 +1020,7 @@ function getOnlineCouriers(type) {
   storage.online.forEach((info, uid) => {
     const profile = staff[String(uid)];
     if (!profile) return;
-    // groups определяет организацию ��отрудника: ['delivery'], ['taxi'], или обе
+    // groups определяет организацию ��отруд��ика: ['delivery'], ['taxi'], или обе
     const groups = profile.groups || [];
     const inDelivery = groups.includes('delivery');
     const inTaxi = groups.includes('taxi');
@@ -1102,7 +1128,49 @@ async function buildPurchaseScreen(uid, order) {
 // TAXI DISABLED — buildTaxiDriverScreen отключён
 // async function buildTaxiDriverScreen(uid, order) { ... }
 
-// ─────────────────────────── STAFF: GROUP 1 DMs ────────��──────
+// ─────────────────────────── COURIER BUTTONS RESTORE ─────────
+/** После ответа на запрос ссылки восстанавливаем экран закупок/доставки курьера */
+async function restoreCourierOrderButtons(uid, peerId, order) {
+  if (!order) {
+    await sendMessage(peerId, 'Заказ завершён.', { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 1);
+    return;
+  }
+  const status = order.status;
+  if (status === 'accepted') {
+    // Курьер на этапе закупок/готовки — восстанавливаем purchase screen
+    if (order.purchaseMsgId && order.purchaseItems) {
+      const buttons = order.purchaseItems.map(it => ([{
+        label: `${it.bought ? '[✓]' : '[ ]'} ${it.name} x${it.qty}`,
+        color: it.bought ? 'positive' : 'secondary',
+        payload: { action: 'toggle_buy', orderId: order.id, itemName: it.name },
+      }]));
+      const allBought = order.purchaseItems.every(it => it.bought);
+      if (!allBought) {
+        buttons.push([{ label: 'Всё куплено / Готовлю', color: 'positive', payload: { action: 'cooking_done', orderId: order.id } }]);
+      } else {
+        buttons.push([{ label: 'Готово! Еду к клиенту', color: 'positive', payload: { action: 'start_deliver', orderId: order.id } }]);
+      }
+      buttons.push([{ label: 'Отменить заказ', color: 'negative', payload: { action: 'cancel_order', orderId: order.id } }]);
+      await sendMessage(peerId, `Ваш активный заказ ${getOrderNumDisplay(order, order.id)} — продолжайте:`, { keyboard: kb(buttons) }, 1);
+    } else {
+      await sendMessage(peerId, `Продолжайте заказ ${getOrderNumDisplay(order, order.id)}.`, {}, 1);
+    }
+  } else if (status === 'delivering') {
+    // Курьер едет к клиенту
+    await sendMessage(peerId,
+      `Заказ ${getOrderNumDisplay(order, order.id)} — вы едете к клиенту.\nНажмите когда прибудете:`,
+      { keyboard: kb([[{ label: 'Прибыл к клиенту', color: 'positive', payload: { action: 'courier_arrived', orderId: order.id } }], [{ label: 'Отменить заказ', color: 'negative', payload: { action: 'cancel_order', orderId: order.id } }]]) }, 1);
+  } else if (status === 'arrived') {
+    // Курьер на месте
+    await sendMessage(peerId,
+      `Заказ ${getOrderNumDisplay(order, order.id)} — вы на месте у клиента.\nНажмите «Доставлен» после передачи:`,
+      { keyboard: kb([[{ label: 'Доставлен', color: 'positive', payload: { action: 'finish_order', orderId: order.id } }]]) }, 1);
+  } else {
+    await sendMessage(peerId, `Заказ ${getOrderNumDisplay(order, order.id)} — статус: ${status}.`, { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 1);
+  }
+}
+
+// ─────────────────────────── STAFF: GROUP 1 DMs ──────────────
 const STAFF_STEP = {
   NONE: 'none',
   REG_NICK: 'reg_nick',
@@ -1207,26 +1275,35 @@ async function handleGroup1DM(event) {
     return;
   }
 
-  // ── Courier: courier link consent ────────────────────────
+  // ── Courier: link consent (Да/Нет на запрос клиента) ─────
   if (text === 'Да — отправить ссылку' || text === 'Нет — отклонить') {
-    // Ищем заказ курьера
     let consentOrder = null;
-    let consentOrderId = null;
-    for (const [oid, o] of storage.activeOrders.entries()) {
-      if (String(o.courierId) === String(uid)) { consentOrder = o; consentOrderId = oid; break; }
+    for (const [, o] of storage.activeOrders.entries()) {
+      if (String(o.courierId) === String(uid)) { consentOrder = o; break; }
     }
     if (!consentOrder) { await sendMessage(peerId, 'Активный заказ не найден.', {}, 1); return; }
     const clientId = consentOrder.clientId;
     if (text === 'Да — отправить ссылку') {
       await sendMessage(clientId, `Ссылка на переписку с курьером: vk.me/id${uid}`, {}, 2);
-      await sendMessage(peerId, 'Ссылка отправлена клиенту.', { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 1);
     } else {
-      // Сбрасываем флаг запроса чтобы можно было попробовать ещё раз
       const cSess = storage.clientSessions.get(clientId);
       if (cSess && cSess.data) cSess.data.courierLinkRequested = false;
       await sendMessage(clientId, 'Курьер отклонил запрос на отправку ссылки.', {}, 2);
-      await sendMessage(peerId, 'Вы отклонили запрос.', { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 1);
     }
+    // Восстанавливаем активные кнопки курьера в зависимости от состояния заказа
+    await restoreCourierOrderButtons(uid, peerId, consentOrder);
+    return;
+  }
+
+  // ── Courier: запросить ссылку на клиента ──────────────────
+  if (text === 'Ссылка на клиента') {
+    let courierOrder = null;
+    for (const [, o] of storage.activeOrders.entries()) {
+      if (String(o.courierId) === String(uid)) { courierOrder = o; break; }
+    }
+    if (!courierOrder) { await sendMessage(peerId, 'У вас нет активного заказа.', {}, 1); return; }
+    // Курьеру сразу — ссылка на клиента, без лишних вопросов
+    await sendMessage(peerId, `Ссылка на клиента: vk.me/id${courierOrder.clientId}`, {}, 1);
     return;
   }
 
@@ -1310,7 +1387,7 @@ async function handleGroup1DM(event) {
     const text2 = `Профиль сотрудника:\n\nНик: ${profile.nick}\nБанк. счёт: ${profile.bank}\nРоль: ${profile.role}\n\nЛичный автопарк:\n${cars || '  (нет)'}\n��вто организации:\n${orgCars || '  (нет)'}\n\nСтатистика:\n  Заказы доставки: ${profile.stats?.deliveryOrders || 0}\n  Заказы такси: ${profile.stats?.taxiOrders || 0}`;
     await sendMessage(peerId, text2, {
       keyboard: msgKb([
-        [{ label: 'Автопарк', color: 'secondary' }, { label: 'Изменить ник', color: 'secondary' }, { label: 'Изменить счёт', color: 'secondary' }],
+        [{ label: 'Ав��опарк', color: 'secondary' }, { label: 'Изменить ник', color: 'secondary' }, { label: 'Изменить счёт', color: 'secondary' }],
         [{ label: 'Главное меню', color: 'secondary' }],
       ])
     }, 1);
@@ -1433,9 +1510,22 @@ async function handleGroup1DM(event) {
  * Главное меню Group 1 ЛС с кнопками в зависимости от роли
  */
 async function showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role) {
+  // Проверяем есть ли активный заказ у курьера
+  let hasActiveOrder = false;
+  for (const [, o] of storage.activeOrders.entries()) {
+    if (String(o.courierId) === String(uid) && ['accepted', 'delivering', 'arrived'].includes(o.status)) {
+      hasActiveOrder = true;
+      break;
+    }
+  }
   const rows = [
     [{ label: 'Мой профиль', color: 'secondary' }, { label: 'Автопарк', color: 'secondary' }],
   ];
+
+  // Если у курьера активный заказ — показываем кнопку «Ссылка на клиента»
+  if (hasActiveOrder) {
+    rows.push([{ label: 'Ссылка на клиента', color: 'primary' }]);
+  }
 
   if (isSs) {
     rows.push([{ label: 'Управление каталогом', color: 'primary' }]);
@@ -1447,11 +1537,12 @@ async function showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role) {
   }
 
   const onlineInfo = storage.online.get(uid);
-  const statusLine = onlineInfo ? `\n��татус: ${onlineInfo.afk ? 'АФК' : 'На смене'} (${onlineInfo.status})` : '';
+  const statusLine = onlineInfo ? `\nСтатус: ${onlineInfo.afk ? 'АФК' : 'На смене'} (${onlineInfo.status})` : '';
   const roleLabel = { rs: 'Руководство (РС)', ss: 'Старший состав (СС)', kurier: 'Курьер', stazher: 'Стажёр' }[role] || role;
+  const activeOrderNote = hasActiveOrder ? '\nУ вас есть активный заказ.' : '';
 
   await sendMessage(peerId,
-    `Привет, ${profile.nick}!\nРоль: ${roleLabel}${statusLine}\n\nВыберите раздел:`,
+    `Привет, ${profile.nick}!\nРоль: ${roleLabel}${statusLine}${activeOrderNote}\n\nВыберите раздел:`,
     { keyboard: msgKb(rows) }, 1);
 }
 
