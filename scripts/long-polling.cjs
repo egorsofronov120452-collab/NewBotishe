@@ -541,7 +541,7 @@ async function handleDeliveryDM(event) {
       {
         keyboard: msgKb([
           [{ label: 'Каталог', color: 'secondary' }, { label: 'Заказать', color: 'positive' }],
-          [{ label: 'Трудоус��ройство', color: 'secondary' }, { label: 'Частые вопросы', color: 'secondary' }],
+          [{ label: 'Трудоус����ройство', color: 'secondary' }, { label: 'Частые вопросы', color: 'secondary' }],
         ])
       }, 2);
     return;
@@ -708,7 +708,7 @@ async function handleDeliveryDM(event) {
     }
     if (text === 'Оформить заказ') {
       if (!sess.data.basket || sess.data.basket.length === 0) {
-        await sendMessage(peerId, 'Корзина пуста. ����обавьте товары.', {}, 2);
+        await sendMessage(peerId, 'Корзина пуст��. ����обавьте товары.', {}, 2);
         return;
       }
       sess.step = DEL_STEP.CHECKOUT_NICK;
@@ -1630,7 +1630,7 @@ async function handleAdminCatalogueSession(uid, peerId, text, event) {
   if (step === 'admin_item_temp') {
     sess.data.itemTemp = text === 'Пропустить' ? '' : text;
     sess.step = 'admin_item_subitems'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите простые товары из которых состоит (формат: «Яйцо x2, Молоко x1») или «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить' }]]) }, 1);
+    await sendMessage(peerId, 'Введите просты�� товары из которых состоит (формат: «Яйцо x2, Молоко x1») или «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить' }]]) }, 1);
     return true;
   }
   if (step === 'admin_item_subitems') {
@@ -1938,7 +1938,7 @@ async function handleAdminTaxiPoints(uid, peerId, text, event) {
     tp.categories.push({ id: genId(), name: text });
     writeJSON(TAXI_POINTS_FILE, tp);
     sess.step = null; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, `Категория «${text}» добавлена.`, { keyboard: msgKb([[{ label: 'Управление точками такси', color: 'primary' }, { label: 'Главное меню', color: 'secondary' }]]) }, 1);
+    await sendMessage(peerId, `Категория «${text}» добавлена.`, { keyboard: msgKb([[{ label: 'Управление точками такси', color: 'primary' }, { label: '��лавное меню', color: 'secondary' }]]) }, 1);
     return true;
   }
 
@@ -2063,7 +2063,7 @@ async function handleAdminTaxiPoints(uid, peerId, text, event) {
 // ═══════════════════════════════════════════════════════════════
 // TAXI DISABLED — весь блок TAXI: GROUP 3 DMs закомментирован
 // ═══════════════════════════════════════════════════════════════
-/* TAXI_DISABLED_START
+if (false) { // TAXI_DISABLED_START
 const TAXI_STEP = {
   MAIN: 'taxi_main',
   ORDER_NICK: 'taxi_nick',
@@ -2359,7 +2359,7 @@ async function handleTaxiDM(event) {
     return;
   }
 
-  // ── To: point ──────────────────────────────────────────────
+  // ── To: point ──────────────────────────────────��───────────
   if (sess.step === TAXI_STEP.ORDER_TO_POINT) {
     if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_' + uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
     if (text === '← Назад') {
@@ -2641,7 +2641,7 @@ function calculateTaxiPrice(from, to) {
 
     return false;
   }
-TAXI_DISABLED_END */
+} // TAXI_DISABLED_END
 
   // Постоянная клавиатура журнала (зелёный=онлайн, синий=афк, красный=вышел)
   function journalKeyboard() {
@@ -3554,7 +3554,7 @@ TAXI_DISABLED_END */
         const banInfo = isBlacklisted(uid);
         if (banInfo && peerId > 2000000000) return; // silently ignore banned users in chats
 
-        // Журнал активности — только этот чат обрабатывает !онлайн/!афк/!вышел/!стата
+        // Журнал активно��ти — только этот чат обрабатывает !онлайн/!афк/!вышел/!стата
         // !стата также доступна во всех чатах через handleChatCommand
         if (peerId === CHATS.zhurnal) {
           await handleJournalMessage(msg, groupKey); // включает !стата
@@ -3673,7 +3673,7 @@ TAXI_DISABLED_END */
 
   // ─────────────────────────── MINI APP DISPATCH POLLER ────────
   // TAXI DISABLED — pollPendingTaxiDispatch и sendTaxiOrderToDispatch отключены
-  /* TAXI_DISPATCH_DISABLED_START
+  if (false) { // TAXI_DISPATCH_DISABLED_START
   const TAXI_PENDING_DISPATCH_FILE = path.join(DATA_DIR, 'taxi_pending_dispatch.json');
 
   async function pollPendingTaxiDispatch() {
@@ -3744,7 +3744,7 @@ TAXI_DISABLED_END */
     if (!msgId) msgId = await sendMessage(chatId, text, { keyboard, attachment: attachment || undefined }, 3);
     if (msgId) storage.orderMsgIds.set(order.id, { dispatchMsgId: msgId, chatId });
   }
-  TAXI_DISPATCH_DISABLED_END */
+  } // TAXI_DISPATCH_DISABLED_END
 
   // ─────────────────────────── ENTRYPOINT ──────────────────────
   async function main() {
