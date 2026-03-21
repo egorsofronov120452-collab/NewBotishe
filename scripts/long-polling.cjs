@@ -1159,8 +1159,6 @@ async function handleGroup1DM(event) {
     if (adminResult2) return;
     const adminResult3 = await handleAdminVehiclesSession(uid, peerId, text, event);
     if (adminResult3) return;
-    const adminResult4 = await handleAdminTaxiPoints(uid, peerId, text, event);
-    if (adminResult4) return;
   }
 
   // ── Staff registration / profile ─────────────────────────
@@ -1383,67 +1381,123 @@ async function showVehicleMenu(uid, peerId, profile) {
     keyboard: msgKb([
       [{ label: 'Добавить личное авто', color: 'positive' }, { label: 'Взять авто организации', color: 'primary' }],
       [{ label: 'Удалить авто', color: 'negative' }],
-      [{ label: 'Мой профиль', color: 'secondary' }],
+      [{ label: 'Главное меню', color: 'secondary' }],
     ])
   }, 1);
+}
+
+async function showAdminVehicleMenu(peerId) {
+  const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
+  const orgList = vehicles.org_vehicles.map(v => `• ${v.name}`).join('\n') || '(нет)';
+  const catList = vehicles.catalog.map(v => `• ${v.name}`).join('\n') || '(нет)';
+  await sendMessage(peerId,
+    `Управление транспортом организации:\n\nАвто в орг. парке:\n${orgList}\n\nКаталог авто:\n${catList}`,
+    {
+      keyboard: msgKb([
+        [{ label: 'Добавить авто в каталог', color: 'positive' }, { label: 'Добавить авто организации', color: 'primary' }],
+        [{ label: 'Удалить авто из каталога', color: 'negative' }],
+        [{ label: 'Главное меню', color: 'secondary' }],
+      ])
+    }, 1);
 }
 
 async function handleAdminVehiclesSession(uid, peerId, text, event) {
   const sess = storage.adminSessions.get(uid) || { step: null, data: {} };
   const step = sess.step;
 
+  const backToAdminVehicleMenu = async () => {
+    sess.step = null;
+    sess.data = {};
+    storage.adminSessions.set(uid, sess);
+    await showAdminVehicleMenu(peerId);
+  };
+
   if (text === 'Управление авто') {
-    const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
-    const orgList = vehicles.org_vehicles.map(v => `• ${v.name}`).join('\n') || '(нет)';
-    const catList = vehicles.catalog.map(v => `• ${v.name}`).join('\n') || '(нет)';
-    await sendMessage(peerId,
-      `Управление транспортом организации:\n\nАвто в орг. парке:\n${orgList}\n\nКаталог авто (для выбора сотрудниками):\n${catList}`,
-      { keyboard: msgKb([[{ label: 'Добавить авто в каталог' }, { label: 'Добавить авто организации' }], [{ label: 'Удалить авто и�� каталога' }]]) }, 1);
+    await showAdminVehicleMenu(peerId);
     return true;
   }
 
   if (text === 'Добавить авто в каталог') {
-    sess.step = 'admin_veh_cat_name'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите название авто для каталога:', {}, 1);
+    sess.step = 'admin_veh_cat_name';
+    sess.data = {};
+    storage.adminSessions.set(uid, sess);
+    await sendMessage(peerId, 'Введите название авто для каталога:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
     return true;
   }
   if (step === 'admin_veh_cat_name') {
-    sess.data.vehName = text; sess.step = 'admin_veh_cat_photo'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Пришлите фото авто (или введите «Пропустить»):', { keyboard: msgKb([[{ label: 'Пропустить' }]]) }, 1);
+    if (text === 'Отмена') { await backToAdminVehicleMenu(); return true; }
+    sess.data.vehName = text;
+    sess.step = 'admin_veh_cat_photo';
+    storage.adminSessions.set(uid, sess);
+    await sendMessage(peerId, `Пришлите фото авто «${text}»:`, { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
     return true;
   }
   if (step === 'admin_veh_cat_photo') {
-    let photoId = null;
-    if (text !== 'Пропустить' && event.attachments) {
-      const ph = (event.attachments || []).find(a => a.type === 'photo');
-      if (ph) photoId = `photo${ph.photo.owner_id}_${ph.photo.id}`;
+    if (text === 'Отмена') { await backToAdminVehicleMenu(); return true; }
+    const ph = ((event && event.attachments) || []).find(a => a.type === 'photo');
+    if (!ph) {
+      await sendMessage(peerId, 'Фото не прикреплено. Пожалуйста, прикрепите фото:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
+      return true;
     }
+    const photoId = `photo${ph.photo.owner_id}_${ph.photo.id}`;
     const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
     vehicles.catalog.push({ id: genId(), name: sess.data.vehName, photoId });
     writeJSON(VEHICLES_FILE, vehicles);
-    sess.step = null; storage.adminSessions.set(uid, sess);
     await sendMessage(peerId, `Авто «${sess.data.vehName}» добавлено в каталог.`, {}, 1);
+    await backToAdminVehicleMenu();
     return true;
   }
 
   if (text === 'Добавить авто организации') {
     const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
-    if (!vehicles.catalog.length) { await sendMessage(peerId, 'Сначала добавьте авто в каталог.', {}, 1); return true; }
-    sess.step = 'admin_org_veh_select'; storage.adminSessions.set(uid, sess);
+    if (!vehicles.catalog.length) {
+      await sendMessage(peerId, 'Сначала добавьте авто в каталог.', {}, 1);
+      return true;
+    }
+    sess.step = 'admin_org_veh_select';
+    sess.data = {};
+    storage.adminSessions.set(uid, sess);
     const rows = vehicles.catalog.map(v => [{ label: v.name }]);
-    rows.push([{ label: 'Отмена' }]);
+    rows.push([{ label: 'Отмена', color: 'negative' }]);
     await sendMessage(peerId, 'Выберите авто из каталога для орг. парка:', { keyboard: msgKb(rows) }, 1);
     return true;
   }
   if (step === 'admin_org_veh_select') {
-    if (text === 'Отмена') { sess.step = null; storage.adminSessions.set(uid, sess); return true; }
+    if (text === 'Отмена') { await backToAdminVehicleMenu(); return true; }
     const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
     const veh = vehicles.catalog.find(v => v.name === text);
-    if (!veh) return true;
+    if (!veh) {
+      await sendMessage(peerId, 'Авто не найдено. Выберите из списка или нажмите «Отмена»:', {}, 1);
+      return true;
+    }
     vehicles.org_vehicles.push({ ...veh });
     writeJSON(VEHICLES_FILE, vehicles);
-    sess.step = null; storage.adminSessions.set(uid, sess);
     await sendMessage(peerId, `Авто «${veh.name}» добавлено в орг. парк.`, {}, 1);
+    await backToAdminVehicleMenu();
+    return true;
+  }
+
+  if (text === 'Удалить авто из каталога') {
+    const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
+    if (!vehicles.catalog.length) {
+      await sendMessage(peerId, 'Каталог пуст.', {}, 1);
+      return true;
+    }
+    sess.step = 'admin_veh_cat_delete';
+    sess.data = {};
+    storage.adminSessions.set(uid, sess);
+    const rows = vehicles.catalog.map(v => [{ label: v.name }]);
+    rows.push([{ label: 'Отмена', color: 'negative' }]);
+    await sendMessage(peerId, 'Выберите авто для удаления из каталога:', { keyboard: msgKb(rows) }, 1);
+    return true;
+  }
+  if (step === 'admin_veh_cat_delete') {
+    if (text === 'Отмена') { await backToAdminVehicleMenu(); return true; }
+    const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [], catalog: [] });
+    vehicles.catalog = vehicles.catalog.filter(v => v.name !== text);
+    writeJSON(VEHICLES_FILE, vehicles);
+    await sendMessage(peerId, `Авто «${text}» удалено из каталога.`, {}, 1);
+    await backToAdminVehicleMenu();
     return true;
   }
 
@@ -1451,8 +1505,8 @@ async function handleAdminVehiclesSession(uid, peerId, text, event) {
 }
 
 // Vehicle add for staff
-// Flow for personal car: user types name → sends photo (or skips) → asks brandColor → saved
-// Flow for org car: choose from org_vehicles list
+// Flow for personal car: user types name → sends photo (required) → asks brandColor → saved → back to vehicle menu
+// Flow for org car: choose from org_vehicles list → saved → back to vehicle menu
 async function handleStaffVehicleAdd(uid, peerId, text, event) {
   const sess = storage.staffSessions.get(uid) || { step: null, data: {} };
   const step = sess.step;
@@ -1460,56 +1514,60 @@ async function handleStaffVehicleAdd(uid, peerId, text, event) {
   const profile = staff[uid];
   if (!profile) return false;
 
+  // Helper to reload profile and show menu
+  const backToVehicleMenu = async () => {
+    sess.step = null;
+    sess.data = {};
+    storage.staffSessions.set(uid, sess);
+    const freshStaff = readJSON(STAFF_FILE, {});
+    await showVehicleMenu(uid, peerId, freshStaff[uid] || profile);
+  };
+
   // ── Добавить личное авто ──────────────────────────────────────
   if (text === 'Добавить личное авто') {
     sess.step = 'staff_veh_custom_name';
     sess.data = {};
     storage.staffSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите название вашего авто (например: Toyota Camry, белый):', { keyboard: msgKb([[{ label: 'Отмена' }]]) }, 1);
+    await sendMessage(peerId, 'Введите название вашего авто (например: Toyota Camry, белый):', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
     return true;
   }
   if (step === 'staff_veh_custom_name') {
-    if (text === 'Отмена') {
-      sess.step = null; storage.staffSessions.set(uid, sess);
-      await showVehicleMenu(uid, peerId, profile);
-      return true;
-    }
+    if (text === 'Отмена') { await backToVehicleMenu(); return true; }
     sess.data.vehName = text;
     sess.step = 'staff_veh_custom_photo';
     storage.staffSessions.set(uid, sess);
-    await sendMessage(peerId, `Пришлите фото авто «${text}» (или нажмите «Пропустить»):`, { keyboard: msgKb([[{ label: 'Пропустить' }, { label: 'Отмена' }]]) }, 1);
+    await sendMessage(peerId, `Пришлите фото авто «${text}»:`, { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
     return true;
   }
   if (step === 'staff_veh_custom_photo') {
-    if (text === 'Отмена') {
-      sess.step = null; storage.staffSessions.set(uid, sess);
-      await showVehicleMenu(uid, peerId, profile);
+    if (text === 'Отмена') { await backToVehicleMenu(); return true; }
+    const ph = ((event && event.attachments) || []).find(a => a.type === 'photo');
+    if (!ph) {
+      await sendMessage(peerId, 'Фото не прикреплено. Пожалуйста, прикрепите фото авто:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
       return true;
     }
-    let photoId = null;
-    if (text !== 'Пропустить') {
-      const ph = ((event && event.attachments) || []).find(a => a.type === 'photo');
-      if (ph) photoId = `photo${ph.photo.owner_id}_${ph.photo.id}`;
-    }
-    sess.data.photoId = photoId;
+    sess.data.photoId = `photo${ph.photo.owner_id}_${ph.photo.id}`;
     sess.step = 'staff_veh_custom_brandcolor';
     storage.staffSessions.set(uid, sess);
     await sendMessage(peerId, `Авто «${sess.data.vehName}» в цветах организации?`, { keyboard: msgKb([[{ label: 'Да', color: 'positive' }, { label: 'Нет', color: 'negative' }]]) }, 1);
     return true;
   }
   if (step === 'staff_veh_custom_brandcolor') {
-    if (text !== 'Да' && text !== 'Нет') return true;
+    if (text !== 'Да' && text !== 'Нет') {
+      await sendMessage(peerId, 'Нажмите «Да» или «Нет»:', { keyboard: msgKb([[{ label: 'Да', color: 'positive' }, { label: 'Нет', color: 'negative' }]]) }, 1);
+      return true;
+    }
     if (!profile.vehicles) profile.vehicles = [];
     profile.vehicles.push({
       id: genId(),
       name: sess.data.vehName,
       brandColor: text === 'Да',
-      photoId: sess.data.photoId || null,
+      photoId: sess.data.photoId,
       personal: true,
     });
     writeJSON(STAFF_FILE, staff);
-    sess.step = null; storage.staffSessions.set(uid, sess);
     await sendMessage(peerId, `Авто «${sess.data.vehName}» добавлено в ваш парк.`, {}, 1);
+    await backToVehicleMenu();
     return true;
   }
 
@@ -1525,24 +1583,23 @@ async function handleStaffVehicleAdd(uid, peerId, text, event) {
     sess.data = {};
     storage.staffSessions.set(uid, sess);
     const rows = orgList.map(v => [{ label: v.name }]);
-    rows.push([{ label: 'Отмена' }]);
+    rows.push([{ label: 'Отмена', color: 'negative' }]);
     await sendMessage(peerId, 'Выберите авто организации:', { keyboard: msgKb(rows) }, 1);
     return true;
   }
   if (step === 'staff_org_veh_select') {
-    if (text === 'Отмена') {
-      sess.step = null; storage.staffSessions.set(uid, sess);
-      await showVehicleMenu(uid, peerId, profile);
-      return true;
-    }
+    if (text === 'Отмена') { await backToVehicleMenu(); return true; }
     const vehicles = readJSON(VEHICLES_FILE, { org_vehicles: [] });
     const veh = (vehicles.org_vehicles || []).find(v => v.name === text);
-    if (!veh) { await sendMessage(peerId, 'Авто не найдено. Попробуйте ещё раз.', {}, 1); return true; }
+    if (!veh) {
+      await sendMessage(peerId, 'Авто не найдено. Выберите из списка или нажмите «Отмена»:', {}, 1);
+      return true;
+    }
     if (!profile.orgVehicles) profile.orgVehicles = [];
     profile.orgVehicles.push({ ...veh });
     writeJSON(STAFF_FILE, staff);
-    sess.step = null; storage.staffSessions.set(uid, sess);
     await sendMessage(peerId, `Авто организации «${veh.name}» добавлено в ваш профиль.`, {}, 1);
+    await backToVehicleMenu();
     return true;
   }
 
@@ -1559,22 +1616,18 @@ async function handleStaffVehicleAdd(uid, peerId, text, event) {
     sess.step = 'staff_veh_delete';
     storage.staffSessions.set(uid, sess);
     const rows = allCars.map(v => [{ label: v.name + (v.src === 'org' ? ' [орг]' : '') }]);
-    rows.push([{ label: 'Отмена' }]);
+    rows.push([{ label: 'Отмена', color: 'negative' }]);
     await sendMessage(peerId, 'Выберите авто для удаления:', { keyboard: msgKb(rows) }, 1);
     return true;
   }
   if (step === 'staff_veh_delete') {
-    if (text === 'Отмена') {
-      sess.step = null; storage.staffSessions.set(uid, sess);
-      await showVehicleMenu(uid, peerId, profile);
-      return true;
-    }
+    if (text === 'Отмена') { await backToVehicleMenu(); return true; }
     const name = text.replace(' [орг]', '');
     profile.vehicles = (profile.vehicles || []).filter(v => v.name !== name);
     profile.orgVehicles = (profile.orgVehicles || []).filter(v => v.name !== name);
     writeJSON(STAFF_FILE, staff);
-    sess.step = null; storage.staffSessions.set(uid, sess);
     await sendMessage(peerId, `Авто «${name}» удалено.`, {}, 1);
+    await backToVehicleMenu();
     return true;
   }
 
