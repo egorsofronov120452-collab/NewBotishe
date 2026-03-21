@@ -723,27 +723,11 @@ async function handleDeliveryDM(event) {
       await sendMessage(peerId, buildBasketText(sess.data.basket) + '\n\nЕсть промокод? Введите его или нажмите «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить', color: 'secondary' }], [{ label: 'Отмена', color: 'negative' }]]) }, 2);
       return;
     }
-      sess.step = DEL_STEP.CHECKOUT_NICK;
-      await sendMessage(peerId, buildBasketText(sess.data.basket) + '\n\nВведите ваш никнейм в игре:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 2);
-      return;
-    }
     if (text === 'Назад' || text === 'Главное меню') {
       sess.step = DEL_STEP.MAIN; sess.data = {};
       await sendMessage(peerId, 'Главное меню:', { keyboard: msgKb([[{ label: 'Каталог', color: 'secondary' }, { label: 'Заказать', color: 'positive' }], [{ label: 'Трудоустройство', color: 'secondary' }, { label: 'Частые вопросы', color: 'secondary' }]]) }, 2);
       return;
     }
-    return;
-  }
-
-  if (sess.step === DEL_STEP.DEL_ITEM_PICK) {
-    if (text === 'Отмена') { sess.step = DEL_STEP.BASKET; await showBasket(peerId, uid, sess, 2); return; }
-    const idx = sess.data.basket.findIndex(it => it.name === text);
-    if (idx !== -1) {
-      if (sess.data.basket[idx].qty > 1) { sess.data.basket[idx].qty--; }
-      else { sess.data.basket.splice(idx, 1); }
-    }
-    sess.step = DEL_STEP.BASKET;
-    await showBasket(peerId, uid, sess, 2);
     return;
   }
 
@@ -3734,8 +3718,8 @@ async function handleCallback(event, groupKey) {
     if (cookIds) {
       await editMessage(cookIds.chatId, cookIds.dispatchMsgId,
         `Заказ ${getOrderNumDisplay(order, orderId)} — готовится (курьер: ${order.courierNick})`, {
-          keyboard: kb([[{ label: 'Статус: Готовится', color: 'secondary', payload: {} }]])
-        }, 1);
+        keyboard: kb([[{ label: 'Статус: Готовится', color: 'secondary', payload: {} }]])
+      }, 1);
     }
     // Notify client
     await sendMessage(order.clientId, 'Ваш заказ готовится! Курьер скоро выедет.', {}, 2);
@@ -3754,8 +3738,8 @@ async function handleCallback(event, groupKey) {
     if (deliverIds) {
       await editMessage(deliverIds.chatId, deliverIds.dispatchMsgId,
         `Заказ ${getOrderNumDisplay(order, orderId)} — едет к клиенту (курьер: ${order.courierNick})`, {
-          keyboard: kb([[{ label: 'В пути', color: 'primary', payload: {} }]])
-        }, 1);
+        keyboard: kb([[{ label: 'В пути', color: 'primary', payload: {} }]])
+      }, 1);
     }
     // Курьеру — кнопки "Прибыл к клиенту" и отмена
     await sendMessage(uid,
@@ -3779,8 +3763,8 @@ async function handleCallback(event, groupKey) {
     if (arrivedIds) {
       await editMessage(arrivedIds.chatId, arrivedIds.dispatchMsgId,
         `Заказ ${getOrderNumDisplay(order, orderId)} — курьер на месте (${order.courierNick})`, {
-          keyboard: kb([[{ label: 'На месте', color: 'positive', payload: {} }]])
-        }, 1);
+        keyboard: kb([[{ label: 'На месте', color: 'positive', payload: {} }]])
+      }, 1);
     }
     await sendMessage(order.clientId, 'Курьер на месте!', {}, order.type === 'taxi' ? 3 : 2);
     await sendMessage(uid, `Заказ ${getOrderNumDisplay(order, orderId)} — вы на месте у клиента.\nНажмите «Доставлен» после передачи заказа:`,
