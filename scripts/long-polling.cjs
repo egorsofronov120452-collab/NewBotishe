@@ -845,32 +845,6 @@ async function handleDeliveryDM(event) {
     return;
   }
 }
-    if (text === 'Ссы����ка на курьера') {
-      const order = storage.activeOrders.get(sess.data.orderId);
-      if (!order || !order.courierId) { await sendMessage(peerId, 'Курьер ещё не назначен.', {}, 2); return; }
-      sess.data.awaitingCourierLinkConfirm = true;
-      await sendMessage(peerId, 'Вы уверены, что хотите получить ссылку на переписку с курьером?', { keyboard: msgKb([[{ label: 'Да', color: 'positive' }, { label: 'Нет', color: 'negative' }]]) }, 2);
-      return;
-    }
-    if (sess.data.awaitingCourierLinkConfirm) {
-      sess.data.awaitingCourierLinkConfirm = false;
-      if (text === 'Да') {
-        const order = storage.activeOrders.get(sess.data.orderId);
-        if (!order || !order.courierId) { await sendMessage(peerId, 'Курьер не назначен.', {}, 2); return; }
-        // Notify courier about link request
-        await sendMessage(order.courierId,
-          `Клиент ${order.nick} запрашивает ссылку на вашу переписку. Разрешить?`,
-          { keyboard: msgKb([[{ label: `Разрешить#${order.id}`, color: 'positive' }, { label: `Отклонить#${order.id}`, color: 'negative' }]]) }, 1);
-        await sendMessage(peerId, 'Запрос отправлен курьеру. Ожидайте ответа.', {}, 2);
-      } else {
-        await sendMessage(peerId, 'Отменено.', {}, 2);
-      }
-      return;
-    }
-    if (text === 'Главное меню') { sess.step = DEL_STEP.MAIN; sess.data = {}; return; }
-    return;
-  }
-}
 
 async function showOrderItems(peerId, uid, sess, category, cat, groupKey) {
   const PAGE_SIZE = 5;
@@ -2197,437 +2171,437 @@ async function handleAdminTaxiPoints(uid, peerId, text, event) {
 // TAXI DISABLED — весь блок TAXI: GROUP 3 DMs закомментирован
 // ═══════════════════════════════════════════════════════════════
 if (false) { // TAXI_DISABLED_START
-const TAXI_STEP = {
-  MAIN: 'taxi_main',
-  ORDER_NICK: 'taxi_nick',
-  ORDER_PASSENGERS: 'taxi_passengers',
-  ORDER_FROM_CAT: 'taxi_from_cat',     // select "from" category
-  ORDER_FROM_POINT: 'taxi_from_point',   // select "from" point
-  ORDER_TO_CAT: 'taxi_to_cat',       // select "to" category
-  ORDER_TO_POINT: 'taxi_to_point',     // select "to" point
-  ORDER_PROMO: 'taxi_promo',
-  ORDER_PAYMENT: 'taxi_payment',
-  ORDER_PAYMENT_SCREEN: 'taxi_payment_screen',
-  ORDER_CONFIRM: 'taxi_confirm',
-  WAITING: 'taxi_waiting',
-  ACTIVE: 'taxi_active',
-};
+  const TAXI_STEP = {
+    MAIN: 'taxi_main',
+    ORDER_NICK: 'taxi_nick',
+    ORDER_PASSENGERS: 'taxi_passengers',
+    ORDER_FROM_CAT: 'taxi_from_cat',     // select "from" category
+    ORDER_FROM_POINT: 'taxi_from_point',   // select "from" point
+    ORDER_TO_CAT: 'taxi_to_cat',       // select "to" category
+    ORDER_TO_POINT: 'taxi_to_point',     // select "to" point
+    ORDER_PROMO: 'taxi_promo',
+    ORDER_PAYMENT: 'taxi_payment',
+    ORDER_PAYMENT_SCREEN: 'taxi_payment_screen',
+    ORDER_CONFIRM: 'taxi_confirm',
+    WAITING: 'taxi_waiting',
+    ACTIVE: 'taxi_active',
+  };
 
-function taxiSession(uid) {
-  if (!storage.clientSessions.has('taxi_' + uid)) {
-    storage.clientSessions.set('taxi_' + uid, { step: TAXI_STEP.MAIN, data: {} });
-  }
-  return storage.clientSessions.get('taxi_' + uid);
-}
-
-// ── Helpers ────────────────────────────────────────────────────
-function readTaxiPicks() {
-  return readJSON(TAXI_PICKS_FILE, {});
-}
-function writeTaxiPicks(data) {
-  writeJSON(TAXI_PICKS_FILE, data);
-}
-function clearTaxiPick(token) {
-  const picks = readTaxiPicks();
-  delete picks[token];
-  writeTaxiPicks(picks);
-}
-
-/** Return taxi points data { categories, points } */
-function readTaxiPoints() {
-  const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
-  if (!Array.isArray(tp.categories)) tp.categories = [];
-  if (!Array.isArray(tp.points)) tp.points = [];
-  return tp;
-}
-
-/** Build a category-select keyboard for "from" or "to" step */
-async function sendCategorySelect(peerId, groupKey, label) {
-  const tp = readTaxiPoints();
-  if (!tp.categories.length) {
-    await sendMessage(peerId,
-      'Точки маршрута ещё не добавлены. Обратитесь к администратору.',
-      { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, groupKey);
-    return false;
-  }
-  const rows = tp.categories.map(c => {
-    const cnt = tp.points.filter(p => p.categoryId === c.id).length;
-    return [{ label: `${c.name} (${cnt})` }];
-  });
-  rows.push([{ label: 'Отмена', color: 'negative' }]);
-  await sendMessage(peerId,
-    `${label}\nВыберите категорию:`,
-    { keyboard: msgKb(rows) }, groupKey);
-  return true;
-}
-
-/** Build a points-select keyboard for chosen category */
-async function sendPointSelect(peerId, groupKey, catName, label, excludeId = null) {
-  const tp = readTaxiPoints();
-  const cat = tp.categories.find(c => c.name === catName);
-  if (!cat) return false;
-  const pts = tp.points.filter(p => p.categoryId === cat.id && p.id !== excludeId);
-  if (!pts.length) {
-    await sendMessage(peerId, 'В этой категории нет доступных точек.', {}, groupKey);
-    return false;
-  }
-  const rows = pts.map(p => [{ label: p.name }]);
-  rows.push([{ label: '← Назад', color: 'secondary' }, { label: 'Отмена', color: 'negative' }]);
-  await sendMessage(peerId,
-    `${label}\nКатегория: ${catName}\nВыберите точку:`,
-    { keyboard: msgKb(rows) }, groupKey);
-  return true;
-}
-
-/**
- * Send map-picker link to client.
- * The link opens /taxi-order?token=TOKEN&step=from
- * The page lets them pick "from" then "to", posting to /api/taxi-pick.
- * Bot then polls /api/taxi-pick?token=TOKEN every 2 s until both points are set.
- */
-async function sendMapPickerLink(peerId, token, groupKey) {
-  const url = `${APP_URL}/taxi-order?token=${token}&step=from`;
-  console.log(`[Bot] sendMapPickerLink: APP_URL=${APP_URL}, url=${url}`);
-  await sendMessage(peerId,
-    `Выберите точки маршрута на карте.\n\nНажмите кнопку ниже — откроется ка��та. Сначала выберите откуда, затем куда. После выбора вернитесь сюда, бот продолжит автоматически.\n\nСсылка на карту:\n${url}`,
-    {
-      keyboard: msgKb([
-        [{ label: 'Открыть карту', color: 'positive' }],
-        [{ label: 'Отмена', color: 'negative' }],
-      ]),
-    }, groupKey);
-}
-
-/**
- * Poll loop: every 2 s check taxi_picks.json for the given token.
- * When both from+to are present, continue the order flow.
- * Stops after 10 min or if session is cancelled.
- */
-function startMapPollLoop(uid, peerId, token, groupKey) {
-  const MAX_TRIES = 300; // 10 min × 2s
-  let tries = 0;
-
-  const interval = setInterval(async () => {
-    tries++;
-    const sess = storage.clientSessions.get('taxi_' + uid);
-    if (!sess || sess.step !== TAXI_STEP.ORDER_MAP_WAIT || sess.data.mapToken !== token) {
-      clearInterval(interval);
-      return;
+  function taxiSession(uid) {
+    if (!storage.clientSessions.has('taxi_' + uid)) {
+      storage.clientSessions.set('taxi_' + uid, { step: TAXI_STEP.MAIN, data: {} });
     }
+    return storage.clientSessions.get('taxi_' + uid);
+  }
 
+  // ── Helpers ────────────────────────────────────────────────────
+  function readTaxiPicks() {
+    return readJSON(TAXI_PICKS_FILE, {});
+  }
+  function writeTaxiPicks(data) {
+    writeJSON(TAXI_PICKS_FILE, data);
+  }
+  function clearTaxiPick(token) {
     const picks = readTaxiPicks();
-    const entry = picks[token];
-    if (!entry) {
-      if (tries >= MAX_TRIES) {
+    delete picks[token];
+    writeTaxiPicks(picks);
+  }
+
+  /** Return taxi points data { categories, points } */
+  function readTaxiPoints() {
+    const tp = readJSON(TAXI_POINTS_FILE, { categories: [], points: [] });
+    if (!Array.isArray(tp.categories)) tp.categories = [];
+    if (!Array.isArray(tp.points)) tp.points = [];
+    return tp;
+  }
+
+  /** Build a category-select keyboard for "from" or "to" step */
+  async function sendCategorySelect(peerId, groupKey, label) {
+    const tp = readTaxiPoints();
+    if (!tp.categories.length) {
+      await sendMessage(peerId,
+        'Точки маршрута ещё не добавлены. Обратитесь к администратору.',
+        { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, groupKey);
+      return false;
+    }
+    const rows = tp.categories.map(c => {
+      const cnt = tp.points.filter(p => p.categoryId === c.id).length;
+      return [{ label: `${c.name} (${cnt})` }];
+    });
+    rows.push([{ label: 'Отмена', color: 'negative' }]);
+    await sendMessage(peerId,
+      `${label}\nВыберите категорию:`,
+      { keyboard: msgKb(rows) }, groupKey);
+    return true;
+  }
+
+  /** Build a points-select keyboard for chosen category */
+  async function sendPointSelect(peerId, groupKey, catName, label, excludeId = null) {
+    const tp = readTaxiPoints();
+    const cat = tp.categories.find(c => c.name === catName);
+    if (!cat) return false;
+    const pts = tp.points.filter(p => p.categoryId === cat.id && p.id !== excludeId);
+    if (!pts.length) {
+      await sendMessage(peerId, 'В этой категории нет доступных точек.', {}, groupKey);
+      return false;
+    }
+    const rows = pts.map(p => [{ label: p.name }]);
+    rows.push([{ label: '← Назад', color: 'secondary' }, { label: 'Отмена', color: 'negative' }]);
+    await sendMessage(peerId,
+      `${label}\nКатегория: ${catName}\nВыберите точку:`,
+      { keyboard: msgKb(rows) }, groupKey);
+    return true;
+  }
+
+  /**
+   * Send map-picker link to client.
+   * The link opens /taxi-order?token=TOKEN&step=from
+   * The page lets them pick "from" then "to", posting to /api/taxi-pick.
+   * Bot then polls /api/taxi-pick?token=TOKEN every 2 s until both points are set.
+   */
+  async function sendMapPickerLink(peerId, token, groupKey) {
+    const url = `${APP_URL}/taxi-order?token=${token}&step=from`;
+    console.log(`[Bot] sendMapPickerLink: APP_URL=${APP_URL}, url=${url}`);
+    await sendMessage(peerId,
+      `Выберите точки маршрута на карте.\n\nНажмите кнопку ниже — откроется ка��та. Сначала выберите откуда, затем куда. После выбора вернитесь сюда, бот продолжит автоматически.\n\nСсылка на карту:\n${url}`,
+      {
+        keyboard: msgKb([
+          [{ label: 'Открыть карту', color: 'positive' }],
+          [{ label: 'Отмена', color: 'negative' }],
+        ]),
+      }, groupKey);
+  }
+
+  /**
+   * Poll loop: every 2 s check taxi_picks.json for the given token.
+   * When both from+to are present, continue the order flow.
+   * Stops after 10 min or if session is cancelled.
+   */
+  function startMapPollLoop(uid, peerId, token, groupKey) {
+    const MAX_TRIES = 300; // 10 min × 2s
+    let tries = 0;
+
+    const interval = setInterval(async () => {
+      tries++;
+      const sess = storage.clientSessions.get('taxi_' + uid);
+      if (!sess || sess.step !== TAXI_STEP.ORDER_MAP_WAIT || sess.data.mapToken !== token) {
         clearInterval(interval);
-        clearTaxiPick(token);
-        sess.step = TAXI_STEP.MAIN; sess.data = {};
-        storage.clientSessions.set('taxi_' + uid, sess);
-        await sendMessage(peerId, 'Время выбора маршрута истекло. Попробуйте ещё раз.', {
-          keyboard: msgKb([[{ label: 'Заказать такси', color: 'positive' }], [{ label: 'Главное меню', color: 'secondary' }]]),
-        }, groupKey);
+        return;
       }
+
+      const picks = readTaxiPicks();
+      const entry = picks[token];
+      if (!entry) {
+        if (tries >= MAX_TRIES) {
+          clearInterval(interval);
+          clearTaxiPick(token);
+          sess.step = TAXI_STEP.MAIN; sess.data = {};
+          storage.clientSessions.set('taxi_' + uid, sess);
+          await sendMessage(peerId, 'Время выбора маршрута истекло. Попробуйте ещё раз.', {
+            keyboard: msgKb([[{ label: 'Заказать такси', color: 'positive' }], [{ label: 'Главное меню', color: 'secondary' }]]),
+          }, groupKey);
+        }
+        return;
+      }
+
+      // Check both steps present
+      if (!entry.from || !entry.to) return;
+
+      clearInterval(interval);
+      clearTaxiPick(token);
+
+      sess.data.from = entry.from;
+      sess.data.to = entry.to;
+
+      const price = calculateTaxiPrice(sess.data.from, sess.data.to);
+      sess.data.basePrice = price;
+      sess.step = TAXI_STEP.ORDER_PROMO;
+      storage.clientSessions.set('taxi_' + uid, sess);
+
+      await sendMessage(peerId,
+        `Маршрут выбран:\nОтку��а: ${sess.data.from.name}\nКуда: ${sess.data.to.name}\nПримерная стоимость: ${price}р.\n\nЕсть промокод? Введите или нажмите «Пропустить»:`,
+        { keyboard: msgKb([[{ label: 'Пропустить', color: 'secondary' }], [{ label: 'Отмена', color: 'negative' }]]) }, groupKey);
+    }, 2000);
+  }
+
+  async function handleTaxiDM(event) {
+    const uid = event.from_id;
+    const text = (event.text || '').trim();
+    const peerId = event.peer_id;
+    const sess = taxiSession(uid);
+
+    // Check for admin promo management in group 3
+    const role = await getUserRole(uid);
+    if (role === 'rs' || role === 'ss') {
+      const handled = await handleTaxiAdminPromos(uid, peerId, text, event);
+      if (handled) return;
+    }
+
+    const MINI_APP_URL = `${APP_URL}/taxi`;
+
+    const mainKb = msgKb([
+      [{ label: 'Заказать такси', color: 'positive' }],
+      [{ label: 'Трудоустройство', color: 'secondary' }, { label: 'Частые вопросы', color: 'secondary' }],
+    ]);
+
+    // Main menu
+    if (text === 'начать' || text === '/start') {
+      sess.step = TAXI_STEP.MAIN; sess.data = {};
+      storage.clientSessions.set('taxi_' + uid, sess);
+      await sendMessage(peerId, 'Сервис такси. Выберите раздел:', { keyboard: mainKb }, 3);
+      return;
+    }
+    if (text === 'Главное меню') {
+      sess.step = TAXI_STEP.MAIN; sess.data = {};
+      storage.clientSessions.set('taxi_' + uid, sess);
+      await sendMessage(peerId, 'Главное меню:', { keyboard: mainKb }, 3);
+      return;
+    }
+    if (text === 'Трудоустройство') {
+      await sendMessage(peerId, 'Для трудоустройства обратитесь к администратору.', { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
+      return;
+    }
+    if (text === 'Час��ые вопросы') {
+      await sendMessage(peerId,
+        'FAQ такси:\n\n— Как рассчитывается цена?\nПо расстоянию между точками на карте с учётом часа пик (18–22 МСК ×1.3).\n\n— Можно добавить попутчика?\nДа, до 2 попутчиков.\n\n— Комиссия за оплату?\nНаличные — 0%, счёт телефона — 7%, банковский счёт — 5%.',
+        { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
       return;
     }
 
-    // Check both steps present
-    if (!entry.from || !entry.to) return;
-
-    clearInterval(interval);
-    clearTaxiPick(token);
-
-    sess.data.from = entry.from;
-    sess.data.to = entry.to;
-
-    const price = calculateTaxiPrice(sess.data.from, sess.data.to);
-    sess.data.basePrice = price;
-    sess.step = TAXI_STEP.ORDER_PROMO;
-    storage.clientSessions.set('taxi_' + uid, sess);
-
-    await sendMessage(peerId,
-      `Маршрут выбран:\nОтку��а: ${sess.data.from.name}\nКуда: ${sess.data.to.name}\nПримерная стоимость: ${price}р.\n\nЕсть промокод? Введите или нажмите «Пропустить»:`,
-      { keyboard: msgKb([[{ label: 'Пропустить', color: 'secondary' }], [{ label: 'Отмена', color: 'negative' }]]) }, groupKey);
-  }, 2000);
-}
-
-async function handleTaxiDM(event) {
-  const uid = event.from_id;
-  const text = (event.text || '').trim();
-  const peerId = event.peer_id;
-  const sess = taxiSession(uid);
-
-  // Check for admin promo management in group 3
-  const role = await getUserRole(uid);
-  if (role === 'rs' || role === 'ss') {
-    const handled = await handleTaxiAdminPromos(uid, peerId, text, event);
-    if (handled) return;
-  }
-
-  const MINI_APP_URL = `${APP_URL}/taxi`;
-
-  const mainKb = msgKb([
-    [{ label: 'Заказать такси', color: 'positive' }],
-    [{ label: 'Трудоустройство', color: 'secondary' }, { label: 'Частые вопросы', color: 'secondary' }],
-  ]);
-
-  // Main menu
-  if (text === 'начать' || text === '/start') {
-    sess.step = TAXI_STEP.MAIN; sess.data = {};
-    storage.clientSessions.set('taxi_' + uid, sess);
-    await sendMessage(peerId, 'Сервис такси. Выберите раздел:', { keyboard: mainKb }, 3);
-    return;
-  }
-  if (text === 'Главное меню') {
-    sess.step = TAXI_STEP.MAIN; sess.data = {};
-    storage.clientSessions.set('taxi_' + uid, sess);
-    await sendMessage(peerId, 'Главное меню:', { keyboard: mainKb }, 3);
-    return;
-  }
-  if (text === 'Трудоустройство') {
-    await sendMessage(peerId, 'Для трудоустройства обратитесь к администратору.', { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
-    return;
-  }
-  if (text === 'Час��ые вопросы') {
-    await sendMessage(peerId,
-      'FAQ такси:\n\n— Как рассчитывается цена?\nПо расстоянию между точками на карте с учётом часа пик (18–22 МСК ×1.3).\n\n— Можно добавить попутчика?\nДа, до 2 попутчиков.\n\n— Комиссия за оплату?\nНаличные — 0%, счёт телефона — 7%, банковский счёт — 5%.',
-      { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
-    return;
-  }
-
-  // ── Start order — send open_link button ────────────────────
-  if (text === 'Заказать такси') {
-    const orderUrl = `${APP_URL}/taxi?uid=${uid}`;
-    await sendMessage(peerId,
-      'Нажмите кнопку ниже, чтобы открыть форму за��аза такси:',
-      {
-        keyboard: JSON.stringify({
-          one_time: false,
-          buttons: [
-            [
-              {
-                action: {
-                  type: 'open_link',
-                  label: 'Открыть форму заказа',
-                  link: orderUrl,
+    // ── Start order — send open_link button ────────────────────
+    if (text === 'Заказать такси') {
+      const orderUrl = `${APP_URL}/taxi?uid=${uid}`;
+      await sendMessage(peerId,
+        'Нажмите кнопку ниже, чтобы открыть форму за��аза такси:',
+        {
+          keyboard: JSON.stringify({
+            one_time: false,
+            buttons: [
+              [
+                {
+                  action: {
+                    type: 'open_link',
+                    label: 'Открыть форму заказа',
+                    link: orderUrl,
+                  },
                 },
-              },
+              ],
+              [
+                {
+                  action: { type: 'text', label: 'Главное меню', payload: JSON.stringify('Главное меню') },
+                  color: 'secondary',
+                },
+              ],
             ],
-            [
-              {
-                action: { type: 'text', label: 'Главное меню', payload: JSON.stringify('Главное меню') },
-                color: 'secondary',
-              },
-            ],
-          ],
-        }),
-      }, 3);
-    return;
-  }
+          }),
+        }, 3);
+      return;
+    }
 
-  if (sess.step === TAXI_STEP.MAIN) return; // ignore unknown at main
+    if (sess.step === TAXI_STEP.MAIN) return; // ignore unknown at main
 
 
-  // ── Passengers ─────────────────────────────────────────────
-  if (sess.step === TAXI_STEP.ORDER_PASSENGERS) {
-    if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; storage.clientSessions.set('taxi_' + uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
-    sess.data.passengers = text === 'Пропустить' ? [] : text.split(',').map(s => s.trim()).slice(0, 2);
+    // ── Passengers ─────────────────────────────────────────────
+    if (sess.step === TAXI_STEP.ORDER_PASSENGERS) {
+      if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; storage.clientSessions.set('taxi_' + uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
+      sess.data.passengers = text === 'Пропустить' ? [] : text.split(',').map(s => s.trim()).slice(0, 2);
 
-    // Move to from-category selection
-    sess.step = TAXI_STEP.ORDER_FROM_CAT;
-    storage.clientSessions.set('taxi_' + uid, sess);
-    await sendCategorySelect(peerId, 3, 'Шаг 1/2 — Откуда едете?');
-    return;
-  }
-
-  // ── From: category ────────────────────────────────────��────
-  if (sess.step === TAXI_STEP.ORDER_FROM_CAT) {
-    if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_' + uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
-    const tp = readTaxiPoints();
-    const cat = tp.categories.find(c => `${c.name} (${tp.points.filter(p => p.categoryId === c.id).length})` === text || c.name === text);
-    if (!cat) return;
-    sess.data.fromCatName = cat.name;
-    sess.step = TAXI_STEP.ORDER_FROM_POINT;
-    storage.clientSessions.set('taxi_' + uid, sess);
-    await sendPointSelect(peerId, 3, cat.name, 'Шаг 1/2 — Откуда едете?');
-    return;
-  }
-
-  // ── From: point ────────────────────────────────────────────
-  if (sess.step === TAXI_STEP.ORDER_FROM_POINT) {
-    if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_' + uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
-    if (text === '← Назад') {
+      // Move to from-category selection
       sess.step = TAXI_STEP.ORDER_FROM_CAT;
       storage.clientSessions.set('taxi_' + uid, sess);
       await sendCategorySelect(peerId, 3, 'Шаг 1/2 — Откуда едете?');
       return;
     }
-    const tp = readTaxiPoints();
-    const pt = tp.points.find(p => p.name === text);
-    if (!pt) return;
-    sess.data.from = pt;
-    sess.step = TAXI_STEP.ORDER_TO_CAT;
-    storage.clientSessions.set('taxi_' + uid, sess);
-    await sendCategorySelect(peerId, 3, `Шаг 2/2 — Куда едете?\n(Выбрано откуда: ${pt.name})`);
-    return;
-  }
 
-  // ── To: category ───────────────────────────────────────────
-  if (sess.step === TAXI_STEP.ORDER_TO_CAT) {
-    if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_' + uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
-    const tp = readTaxiPoints();
-    const cat = tp.categories.find(c => `${c.name} (${tp.points.filter(p => p.categoryId === c.id).length})` === text || c.name === text);
-    if (!cat) return;
-    sess.data.toCatName = cat.name;
-    sess.step = TAXI_STEP.ORDER_TO_POINT;
-    storage.clientSessions.set('taxi_' + uid, sess);
-    await sendPointSelect(peerId, 3, cat.name, `Шаг 2/2 — Куда едете?`, sess.data.from?.id);
-    return;
-  }
+    // ── From: category ────────────────────────────────────��────
+    if (sess.step === TAXI_STEP.ORDER_FROM_CAT) {
+      if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_' + uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
+      const tp = readTaxiPoints();
+      const cat = tp.categories.find(c => `${c.name} (${tp.points.filter(p => p.categoryId === c.id).length})` === text || c.name === text);
+      if (!cat) return;
+      sess.data.fromCatName = cat.name;
+      sess.step = TAXI_STEP.ORDER_FROM_POINT;
+      storage.clientSessions.set('taxi_' + uid, sess);
+      await sendPointSelect(peerId, 3, cat.name, 'Шаг 1/2 — Откуда едете?');
+      return;
+    }
 
-  // ── To: point ────────────────────────���─────────��───────────
-  if (sess.step === TAXI_STEP.ORDER_TO_POINT) {
-    if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_' + uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
-    if (text === '← Назад') {
+    // ── From: point ────────────────────────────────────────────
+    if (sess.step === TAXI_STEP.ORDER_FROM_POINT) {
+      if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_' + uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
+      if (text === '← Назад') {
+        sess.step = TAXI_STEP.ORDER_FROM_CAT;
+        storage.clientSessions.set('taxi_' + uid, sess);
+        await sendCategorySelect(peerId, 3, 'Шаг 1/2 — Откуда едете?');
+        return;
+      }
+      const tp = readTaxiPoints();
+      const pt = tp.points.find(p => p.name === text);
+      if (!pt) return;
+      sess.data.from = pt;
       sess.step = TAXI_STEP.ORDER_TO_CAT;
       storage.clientSessions.set('taxi_' + uid, sess);
-      await sendCategorySelect(peerId, 3, `Шаг 2/2 — Куда едете?\n(Выбрано откуда: ${sess.data.from?.name})`);
+      await sendCategorySelect(peerId, 3, `Шаг 2/2 — Куда едете?\n(Выбрано откуда: ${pt.name})`);
       return;
     }
-    const tp = readTaxiPoints();
-    const pt = tp.points.find(p => p.name === text && p.id !== sess.data.from?.id);
-    if (!pt) { await sendMessage(peerId, 'Выберите другую точку.', {}, 3); return; }
-    sess.data.to = pt;
 
-    // Calculate price
-    const price = calculateTaxiPrice(sess.data.from, sess.data.to);
-    sess.data.basePrice = price;
-    sess.step = TAXI_STEP.ORDER_PROMO;
-    storage.clientSessions.set('taxi_' + uid, sess);
-    await sendMessage(peerId,
-      `Маршрут выбран:\nОткуда: ${sess.data.from.name}\nКуда: ${sess.data.to.name}\nПримерная стоимость: ${price}р.\n\nЕсть промокод? Введите или нажмите «Пропустить»:`,
-      { keyboard: msgKb([[{ label: 'Пропустить', color: 'secondary' }], [{ label: 'Отмена', color: 'negative' }]]) }, 3);
-    return;
-  }
+    // ── To: category ───────────────────────────────────────────
+    if (sess.step === TAXI_STEP.ORDER_TO_CAT) {
+      if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_' + uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
+      const tp = readTaxiPoints();
+      const cat = tp.categories.find(c => `${c.name} (${tp.points.filter(p => p.categoryId === c.id).length})` === text || c.name === text);
+      if (!cat) return;
+      sess.data.toCatName = cat.name;
+      sess.step = TAXI_STEP.ORDER_TO_POINT;
+      storage.clientSessions.set('taxi_' + uid, sess);
+      await sendPointSelect(peerId, 3, cat.name, `Шаг 2/2 — Куда едете?`, sess.data.from?.id);
+      return;
+    }
 
-  // ── Promo ──────────────────────────────────────────────────
-  if (sess.step === TAXI_STEP.ORDER_PROMO) {
-    if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_' + uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
-    if (text !== 'Пропустить') {
-      const pr = applyPromo(text, 'taxi', [{ name: 'Поездка', price: sess.data.basePrice, qty: 1 }]);
-      if (!pr.ok) {
-        await sendMessage(peerId, pr.msg + '\nВведите другой промокод или «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить' }]]) }, 3);
+    // ── To: point ────────────────────────���─────────��───────────
+    if (sess.step === TAXI_STEP.ORDER_TO_POINT) {
+      if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_' + uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
+      if (text === '← Назад') {
+        sess.step = TAXI_STEP.ORDER_TO_CAT;
+        storage.clientSessions.set('taxi_' + uid, sess);
+        await sendCategorySelect(peerId, 3, `Шаг 2/2 — Куда едете?\n(Выбрано откуда: ${sess.data.from?.name})`);
         return;
       }
-      sess.data.promo = pr;
-      sess.data.discountedPrice = Math.max(0, sess.data.basePrice - (pr.discount || 0));
-    } else {
-      sess.data.discountedPrice = sess.data.basePrice;
-    }
-    sess.step = TAXI_STEP.ORDER_PAYMENT;
-    storage.clientSessions.set('taxi_' + uid, sess);
-    await sendMessage(peerId,
-      `Стоимость: ${sess.data.discountedPrice}р.\n\nВыберите способ оплаты:\n• Наличными — без ком��ссии\n• Счёт телефона — +7% комиссия\n• Банк. счёт — +5% комиссия`,
-      { keyboard: msgKb([[{ label: 'Наличными' }], [{ label: 'Счёт телефона' }], [{ label: 'Банковский счёт' }], [{ label: 'Отмена', color: 'negative' }]]) }, 3);
-    return;
-  }
+      const tp = readTaxiPoints();
+      const pt = tp.points.find(p => p.name === text && p.id !== sess.data.from?.id);
+      if (!pt) { await sendMessage(peerId, 'Выберите другую точку.', {}, 3); return; }
+      sess.data.to = pt;
 
-  // ── Payment method ────────────────────────��────────────────
-  if (sess.step === TAXI_STEP.ORDER_PAYMENT) {
-    if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_' + uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
-    const payMap = { 'Наличными': { type: 'cash', commission: 0 }, 'Счёт телефона': { type: 'phone', commission: 0.07 }, 'Банковский счёт': { type: 'bank', commission: 0.05 } };
-    const pay = payMap[text];
-    if (!pay) return;
-    sess.data.payment = pay;
-    const finalPrice = Math.round(sess.data.discountedPrice * (1 + pay.commission));
-    sess.data.finalPrice = finalPrice;
-
-    if (pay.type !== 'cash') {
-      sess.step = TAXI_STEP.ORDER_PAYMENT_SCREEN;
+      // Calculate price
+      const price = calculateTaxiPrice(sess.data.from, sess.data.to);
+      sess.data.basePrice = price;
+      sess.step = TAXI_STEP.ORDER_PROMO;
       storage.clientSessions.set('taxi_' + uid, sess);
       await sendMessage(peerId,
-        `Итоговая сумма (с комиссией ${Math.round(pay.commission * 100)}%): ${finalPrice}р.\n\nПереведите средства на счёт ${ORG_BANK} и пришлите скриншот оплаты с /timestamp или временем над HUD.`,
-        { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 3);
+        `Маршрут выбран:\nОткуда: ${sess.data.from.name}\nКуда: ${sess.data.to.name}\nПримерная стоимость: ${price}р.\n\nЕсть промокод? Введите или нажмите «Пропустить»:`,
+        { keyboard: msgKb([[{ label: 'Пропустить', color: 'secondary' }], [{ label: 'Отмена', color: 'negative' }]]) }, 3);
       return;
     }
-    sess.step = TAXI_STEP.ORDER_CONFIRM;
-    storage.clientSessions.set('taxi_' + uid, sess);
-    await showTaxiConfirm(peerId, uid, sess, 3);
-    return;
-  }
 
-  // ── Payment screenshot ─────────────────────────────────────
-  if (sess.step === TAXI_STEP.ORDER_PAYMENT_SCREEN) {
-    if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_' + uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
-    const hasScreenshot = event.attachments && event.attachments.some(a => a.type === 'photo');
-    if (!hasScreenshot && !text.includes('/timestamp')) {
-      await sendMessage(peerId, 'Пришлите скриншот оплаты с /timestamp или временем над HUD.', {}, 3);
-      return;
-    }
-    sess.data.paymentScreenshot = true;
-    sess.step = TAXI_STEP.ORDER_CONFIRM;
-    storage.clientSessions.set('taxi_' + uid, sess);
-    await showTaxiConfirm(peerId, uid, sess, 3);
-    return;
-  }
-
-  // ── Confirm ────────────────────────────────────────────────
-  if (sess.step === TAXI_STEP.ORDER_CONFIRM) {
-    if (text === 'Отмена') {
-      sess.step = TAXI_STEP.MAIN; sess.data = {};
-      storage.clientSessions.set('taxi_' + uid, sess);
-      await sendMessage(peerId, 'Заказ отменён.', { keyboard: mainKb }, 3);
-      return;
-    }
-    if (text === 'Изменить') {
-      sess.step = TAXI_STEP.ORDER_NICK; sess.data = {};
-      storage.clientSessions.set('taxi_' + uid, sess);
-      await sendMessage(peerId, 'Введите никнейм:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 3);
-      return;
-    }
-    if (text === 'Подтвердить') {
-      const orderId = genId();
-      const orderNum = incrementOrderNumber('taxi');
-      const order = {
-        id: orderId, num: orderNum, type: 'taxi', clientId: uid,
-        nick: sess.data.nick,
-        passengers: sess.data.passengers || [],
-        from: sess.data.from, to: sess.data.to,
-        basePrice: sess.data.basePrice, finalPrice: sess.data.finalPrice,
-        costTotal: 0, // taxi has no cost items
-        payment: sess.data.payment,
-        promo: sess.data.promo?.promo?.code || null,
-        promoDesc: sess.data.promo?.msg || null,
-        status: 'pending', createdAt: Date.now(),
-      };
-      storage.activeTaxi.set(orderId, order);
-      const ords = readJSON(ORDERS_FILE, { delivery: [], taxi: [] });
-      ords.taxi.push(order);
-      writeJSON(ORDERS_FILE, ords);
-      await sendOrderToDispatch(order);
-      sess.step = TAXI_STEP.WAITING; sess.data.orderId = orderId;
+    // ── Promo ──────────────────────────────────────────────────
+    if (sess.step === TAXI_STEP.ORDER_PROMO) {
+      if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_' + uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
+      if (text !== 'Пропустить') {
+        const pr = applyPromo(text, 'taxi', [{ name: 'Поездка', price: sess.data.basePrice, qty: 1 }]);
+        if (!pr.ok) {
+          await sendMessage(peerId, pr.msg + '\nВведите другой промокод или «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить' }]]) }, 3);
+          return;
+        }
+        sess.data.promo = pr;
+        sess.data.discountedPrice = Math.max(0, sess.data.basePrice - (pr.discount || 0));
+      } else {
+        sess.data.discountedPrice = sess.data.basePrice;
+      }
+      sess.step = TAXI_STEP.ORDER_PAYMENT;
       storage.clientSessions.set('taxi_' + uid, sess);
       await sendMessage(peerId,
-        'Заказ такси оформлен! Ожидайте назначения водителя.',
-        { keyboard: msgKb([[{ label: 'Статус заказа' }], [{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
+        `Стоимость: ${sess.data.discountedPrice}р.\n\nВыберите способ оплаты:\n• Наличными — без ком��ссии\n• Счёт телефона — +7% комиссия\n• Банк. счёт — +5% комиссия`,
+        { keyboard: msgKb([[{ label: 'Наличными' }], [{ label: 'Счёт телефона' }], [{ label: 'Банковский счёт' }], [{ label: 'Отмена', color: 'negative' }]]) }, 3);
       return;
     }
 
-    // ── Waiting / Active ───────────────────────────────────────
-    if (sess.step === TAXI_STEP.WAITING || sess.step === TAXI_STEP.ACTIVE) {
-      if (text === 'Статус заказа') {
-        const order = storage.activeTaxi.get(sess.data.orderId);
-        if (!order) { await sendMessage(peerId, 'Заказ не найден или завершён.', {}, 3); return; }
-        const statusMap = { pending: 'Ожидает водителя', accepted: 'Водитель едет к вам', delivering: 'В пути', arrived: 'Водитель ждёт', done: 'Завершён' };
-        await sendMessage(peerId, `Статус: ${statusMap[order.status] || order.status}\nВодитель: ${order.courierNick || 'не назначен'}`, {}, 3);
+    // ── Payment method ────────────────────────��────────────────
+    if (sess.step === TAXI_STEP.ORDER_PAYMENT) {
+      if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_' + uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
+      const payMap = { 'Наличными': { type: 'cash', commission: 0 }, 'Счёт телефона': { type: 'phone', commission: 0.07 }, 'Банковский счёт': { type: 'bank', commission: 0.05 } };
+      const pay = payMap[text];
+      if (!pay) return;
+      sess.data.payment = pay;
+      const finalPrice = Math.round(sess.data.discountedPrice * (1 + pay.commission));
+      sess.data.finalPrice = finalPrice;
+
+      if (pay.type !== 'cash') {
+        sess.step = TAXI_STEP.ORDER_PAYMENT_SCREEN;
+        storage.clientSessions.set('taxi_' + uid, sess);
+        await sendMessage(peerId,
+          `Итоговая сумма (с комиссией ${Math.round(pay.commission * 100)}%): ${finalPrice}р.\n\nПереведите средства на счёт ${ORG_BANK} и пришлите скриншот оплаты с /timestamp или временем над HUD.`,
+          { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 3);
         return;
       }
-      if (text === 'Главное меню') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_' + uid, sess); return; }
+      sess.step = TAXI_STEP.ORDER_CONFIRM;
+      storage.clientSessions.set('taxi_' + uid, sess);
+      await showTaxiConfirm(peerId, uid, sess, 3);
       return;
     }
-  }
-}
 
-async function showTaxiConfirm(peerId, uid, sess, groupKey) {
+    // ── Payment screenshot ─────────────────────────────────────
+    if (sess.step === TAXI_STEP.ORDER_PAYMENT_SCREEN) {
+      if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_' + uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
+      const hasScreenshot = event.attachments && event.attachments.some(a => a.type === 'photo');
+      if (!hasScreenshot && !text.includes('/timestamp')) {
+        await sendMessage(peerId, 'Пришлите скриншот оплаты с /timestamp или временем над HUD.', {}, 3);
+        return;
+      }
+      sess.data.paymentScreenshot = true;
+      sess.step = TAXI_STEP.ORDER_CONFIRM;
+      storage.clientSessions.set('taxi_' + uid, sess);
+      await showTaxiConfirm(peerId, uid, sess, 3);
+      return;
+    }
+
+    // ── Confirm ────────────────────────────────────────────────
+    if (sess.step === TAXI_STEP.ORDER_CONFIRM) {
+      if (text === 'Отмена') {
+        sess.step = TAXI_STEP.MAIN; sess.data = {};
+        storage.clientSessions.set('taxi_' + uid, sess);
+        await sendMessage(peerId, 'Заказ отменён.', { keyboard: mainKb }, 3);
+        return;
+      }
+      if (text === 'Изменить') {
+        sess.step = TAXI_STEP.ORDER_NICK; sess.data = {};
+        storage.clientSessions.set('taxi_' + uid, sess);
+        await sendMessage(peerId, 'Введите никнейм:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 3);
+        return;
+      }
+      if (text === 'Подтвердить') {
+        const orderId = genId();
+        const orderNum = incrementOrderNumber('taxi');
+        const order = {
+          id: orderId, num: orderNum, type: 'taxi', clientId: uid,
+          nick: sess.data.nick,
+          passengers: sess.data.passengers || [],
+          from: sess.data.from, to: sess.data.to,
+          basePrice: sess.data.basePrice, finalPrice: sess.data.finalPrice,
+          costTotal: 0, // taxi has no cost items
+          payment: sess.data.payment,
+          promo: sess.data.promo?.promo?.code || null,
+          promoDesc: sess.data.promo?.msg || null,
+          status: 'pending', createdAt: Date.now(),
+        };
+        storage.activeTaxi.set(orderId, order);
+        const ords = readJSON(ORDERS_FILE, { delivery: [], taxi: [] });
+        ords.taxi.push(order);
+        writeJSON(ORDERS_FILE, ords);
+        await sendOrderToDispatch(order);
+        sess.step = TAXI_STEP.WAITING; sess.data.orderId = orderId;
+        storage.clientSessions.set('taxi_' + uid, sess);
+        await sendMessage(peerId,
+          'Заказ такси оформлен! Ожидайте назначения водителя.',
+          { keyboard: msgKb([[{ label: 'Статус заказа' }], [{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
+        return;
+      }
+
+      // ── Waiting / Active ───────────────────────────────────────
+      if (sess.step === TAXI_STEP.WAITING || sess.step === TAXI_STEP.ACTIVE) {
+        if (text === 'Статус заказа') {
+          const order = storage.activeTaxi.get(sess.data.orderId);
+          if (!order) { await sendMessage(peerId, 'Заказ не найден или завершён.', {}, 3); return; }
+          const statusMap = { pending: 'Ожидает водителя', accepted: 'Водитель едет к вам', delivering: 'В пути', arrived: 'Водитель ждёт', done: 'Завершён' };
+          await sendMessage(peerId, `Статус: ${statusMap[order.status] || order.status}\nВодитель: ${order.courierNick || 'не назначен'}`, {}, 3);
+          return;
+        }
+        if (text === 'Главное меню') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_' + uid, sess); return; }
+        return;
+      }
+    }
+  }
+
+  async function showTaxiConfirm(peerId, uid, sess, groupKey) {
     const passText = sess.data.passengers?.length ? `\nПопутчики: ${sess.data.passengers.join(', ')}` : '';
     const payText = sess.data.payment.type === 'cash' ? 'Наличными' : sess.data.payment.type === 'phone' ? 'Счёт телефона' : 'Банковский счёт';
     const promoText = sess.data.promoDesc ? `\nПромокод: ${sess.data.promoDesc}` : '';
@@ -2639,9 +2613,9 @@ async function showTaxiConfirm(peerId, uid, sess, groupKey) {
           [{ label: 'Отмена', color: 'negative' }],
         ])
       }, groupKey);
-}
+  }
 
-function calculateTaxiPrice(from, to) {
+  function calculateTaxiPrice(from, to) {
     // Use stored price overrides if available
     if (from.priceOverrides && from.priceOverrides[to.id]) return from.priceOverrides[to.id];
     // Coordinate-based straight-line distance calculation
@@ -2768,1044 +2742,1044 @@ function calculateTaxiPrice(from, to) {
   }
 } // TAXI_DISABLED_END
 
-  // Постоянная клавиатура журнала (зелёный=онлайн, синий=афк, красный=вышел)
-  function journalKeyboard() {
-    return msgKb([
-      [
-        { label: '!онлайн', color: 'positive' },
-        { label: '!афк', color: 'primary' },
-        { label: '!вышел', color: 'negative' },
-      ],
-      [{ label: '!стата', color: 'secondary' }],
-    ]);
-  }
+// Постоянная клавиатура журнала (зелёный=онлайн, синий=афк, красный=вышел)
+function journalKeyboard() {
+  return msgKb([
+    [
+      { label: '!онлайн', color: 'positive' },
+      { label: '!афк', color: 'primary' },
+      { label: '!вышел', color: 'negative' },
+    ],
+    [{ label: '!стата', color: 'secondary' }],
+  ]);
+}
 
-  // ─────────────────────────── ACTIVITY JOURNAL ─────────────────
-  async function handleJournalMessage(event, groupKey) {
-    const rawText = (event.text || '').trim();
-    const uid = event.from_id;
-    const peerId = event.peer_id;
-    const gk = groupKey || 1;
+// ─────────────────────────── ACTIVITY JOURNAL ─────────────────
+async function handleJournalMessage(event, groupKey) {
+  const rawText = (event.text || '').trim();
+  const uid = event.from_id;
+  const peerId = event.peer_id;
+  const gk = groupKey || 1;
 
-    // Допустимые команды журнала: !онлайн, !афк, !вышел, !стата
-    const journalCmds = ['!онлайн', '!афк', '!вышел', '!стата'];
-    const lowerText = rawText.toLowerCase();
-    const matchedCmd = journalCmds.find(c => lowerText === c || lowerText.startsWith(c + ' '));
-    if (!matchedCmd) return false; // не команда журнала
+  // Допустимые команды журнала: !онлайн, !афк, !вышел, !стата
+  const journalCmds = ['!онлайн', '!афк', '!вышел', '!стата'];
+  const lowerText = rawText.toLowerCase();
+  const matchedCmd = journalCmds.find(c => lowerText === c || lowerText.startsWith(c + ' '));
+  if (!matchedCmd) return false; // не команда журнала
 
-    const parts = rawText.split(/\s+/);
-    const cmd = parts[0].toLowerCase();
-    const statusText = parts.slice(1).join(' ');
+  const parts = rawText.split(/\s+/);
+  const cmd = parts[0].toLowerCase();
+  const statusText = parts.slice(1).join(' ');
 
-    // !стата делегируем
-    if (cmd === '!стата') {
-      await handleStatsCommand(event, gk);
-      return true;
-    }
-
-    const staff = readJSON(STAFF_FILE, {});
-    const profile = staff[uid];
-
-    // Роль: сначала из staff-файла, потом по членству в чатах руководства/СС
-    let role = profile?.role || null;
-    if (!role) {
-      // Проверяем членство в чате Руководство → РС, СС-чатов → СС
-      try {
-        const rmembers = CHATS.rukovodstvo
-          ? await callVK('messages.getConversationMembers', { peer_id: CHATS.rukovodstvo }, 1)
-          : { items: [] };
-        if ((rmembers.items || []).some(m => m.member_id === uid)) role = 'rs';
-      } catch (_) { }
-      if (!role) {
-        try {
-          const ssd = CHATS.ss ? await callVK('messages.getConversationMembers', { peer_id: CHATS.ss }, 2) : { items: [] };
-          const sst = CHATS.taxiSs ? await callVK('messages.getConversationMembers', { peer_id: CHATS.taxiSs }, 3) : { items: [] };
-          if ((ssd.items || []).some(m => m.member_id === uid) || (sst.items || []).some(m => m.member_id === uid)) role = 'ss';
-        } catch (_) { }
-      }
-      if (!role) role = 'kurier';
-    }
-
-    const nick = profile?.nick || `id${uid}`;
-    const roleAbbr = { rs: 'РС', ss: 'СС', kurier: 'Курьер', stazher: 'Стажёр' }[role] || role;
-
-    // Орг-принадлежность из профиля, иначе по членству
-    let orgs = [];
-    if (profile?.groups && profile.groups.length) {
-      orgs = profile.groups;
-    } else {
-      try {
-        if (CHATS.dispetcherskaya) {
-          const dm = await callVK('messages.getConversationMembers', { peer_id: CHATS.dispetcherskaya }, 2);
-          if ((dm.items || []).some(m => m.member_id === uid)) orgs.push('delivery');
-        }
-      } catch (_) { }
-      try {
-        if (CHATS.taxiDispetcherskaya) {
-          const tm = await callVK('messages.getConversationMembers', { peer_id: CHATS.taxiDispetcherskaya }, 3);
-          if ((tm.items || []).some(m => m.member_id === uid)) orgs.push('taxi');
-        }
-      } catch (_) { }
-      if (!orgs.length) orgs = ['delivery']; // если не определить — показываем как delivery
-    }
-
-    let newStatus, online, afk;
-
-    if (cmd === '!онлайн') {
-      online = true; afk = false;
-      newStatus = statusText || (role === 'stazher' ? 'Экзамен' : 'На смене');
-    } else if (cmd === '!афк') {
-      online = true; afk = true;
-      newStatus = statusText || 'Не у ПК';
-    } else if (cmd === '!вышел') {
-      online = false; afk = false;
-      newStatus = '';
-    } else {
-      return false;
-    }
-
-    // Update online map
-    const now = Date.now();
-    const prev = storage.online.get(uid);
-    if (prev && prev.online && !online) {
-      const dur = now - (prev.since || now);
-      updateOnlineStats(uid, dur);
-    }
-
-    if (online) {
-      storage.online.set(uid, { nick, role, roleAbbr, orgs, status: newStatus, afk, online: true, since: now });
-    } else {
-      storage.online.delete(uid);
-    }
-
-    // Persist
-    const oj = readJSON(ONLINE_FILE, { sessions: {}, stats: {} });
-    if (online) {
-      oj.sessions[uid] = { nick, role, roleAbbr, orgs, status: newStatus, afk, online: true, since: now };
-    } else {
-      delete oj.sessions[uid];
-    }
-    writeJSON(ONLINE_FILE, oj);
-
-    // Build server list message
-    const serverList = buildServerList();
-
-    let actionText;
-    if (cmd === '!онлайн') actionText = `${nick} [${roleAbbr}] вышел на смену. Статус: ${newStatus}`;
-    else if (cmd === '!афк') actionText = `${nick} [${roleAbbr}] ушёл в АФК. (${newStatus})`;
-    else actionText = `${nick} [${roleAbbr}] завершил смену.`;
-
-    // Отправляем с постоянной клавиатурой кнопок !онлайн / !афк / !вышел
-    await sendMessage(peerId, `${actionText}\n\n${serverList}`, { keyboard: journalKeyboard() }, gk);
+  // !стата делегируем
+  if (cmd === '!стата') {
+    await handleStatsCommand(event, gk);
     return true;
   }
 
-  function buildServerList() {
-    const activeList = [];
-    const afkList = [];
+  const staff = readJSON(STAFF_FILE, {});
+  const profile = staff[uid];
 
-    storage.online.forEach((info) => {
-      const line = `• ${info.nick} [${info.roleAbbr || info.role}] — ${info.status || ''}`;
-      if (info.afk) afkList.push(line);
-      else activeList.push(line);
-    });
-
-    const lines = [];
-    lines.push(`На смене (${activeList.length}):`);
-    if (activeList.length) lines.push(...activeList);
-    else lines.push('  (никого нет)');
-
-    if (afkList.length) {
-      lines.push(`\nАФК (${afkList.length}):`);
-      lines.push(...afkList);
-    }
-
-    return lines.join('\n');
-  }
-
-  function updateOnlineStats(uid, durationMs) {
-    const key = String(uid);
-    const oj = readJSON(ONLINE_FILE, { sessions: {}, stats: {} });
-    if (!oj.stats) oj.stats = {};
-    if (!oj.stats[key]) oj.stats[key] = { totalMs: 0, weeklyMs: {} };
-    if (!oj.stats[key].weeklyMs) oj.stats[key].weeklyMs = {};
-    oj.stats[key].totalMs = (oj.stats[key].totalMs || 0) + durationMs;
-
-    const dayKey = new Date().toISOString().slice(0, 10);
-    oj.stats[key].weeklyMs[dayKey] = (oj.stats[key].weeklyMs[dayKey] || 0) + durationMs;
-
-    writeJSON(ONLINE_FILE, oj);
-  }
-
-  async function handleStatsCommand(event, groupKey) {
-    const text = (event.text || '').trim();
-    const uid = event.from_id;
-    const peerId = event.peer_id;
-    const gk = groupKey || 1; // используем переданный токен, иначе группа 1
-
-    if (text.toLowerCase() !== '!стата') return;
-
-    const key = String(uid);
-    const oj = readJSON(ONLINE_FILE, { sessions: {}, stats: {} });
-    if (!oj.stats) oj.stats = {};
-    const myStats = oj.stats[key];
-    if (!myStats) { await sendMessage(peerId, 'Статистика не найдена. Выйдите на смену через !онлайн.', { keyboard: journalKeyboard() }, gk); return; }
-
-    const totalMs = myStats.totalMs || 0;
-    const todayKey = new Date().toISOString().slice(0, 10);
-    const todayMs = (myStats.weeklyMs || {})[todayKey] || 0;
-
-    const weekStart = getWeekStart();
-    let weekMs = 0;
-    for (const [day, ms] of Object.entries(myStats.weeklyMs || {})) {
-      if (day >= weekStart) weekMs += ms;
-    }
-
-    const weekRanking = buildWeekRanking(weekStart);
-    const myRank = weekRanking.findIndex(r => r.uid === key) + 1;
-
-    const msgCount = myStats.msgCount || 0;
-
-    const text2 = `Статистика:\n\nВсего онлайн: ${msToHuman(totalMs)}\nОнлайн сегодня: ${msToHuman(todayMs)}\nОнлайн за неделю: ${msToHuman(weekMs)}\nТоп по онлайну за неделю: ${myRank > 0 ? myRank + ' место' : '—'}${msgCount ? `\nСообщений: ${msgCount}` : ''}`;
-
-    await sendMessage(peerId, text2, { keyboard: journalKeyboard() }, gk);
-  }
-
-  function getWeekStart() {
-    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
-    const day = d.getDay(); // 0=Sun
-    const diff = (day + 6) % 7; // Mon=0
-    d.setDate(d.getDate() - diff);
-    return d.toISOString().slice(0, 10);
-  }
-
-  function buildWeekRanking(weekStart) {
-    const oj = readJSON(ONLINE_FILE, { stats: {} });
-    const ranking = [];
-    for (const [uid, stats] of Object.entries(oj.stats || {})) {
-      if (!stats || typeof stats !== 'object') continue;
-      let weekMs = 0;
-      for (const [day, ms] of Object.entries(stats.weeklyMs || {})) {
-        if (day >= weekStart) weekMs += (ms || 0);
-      }
-      if (weekMs > 0) ranking.push({ uid: String(uid), weekMs });
-    }
-    ranking.sort((a, b) => b.weekMs - a.weekMs);
-    return ranking;
-  }
-
-  function msToHuman(ms) {
-    const h = Math.floor(ms / 3600000);
-    const m = Math.floor((ms % 3600000) / 60000);
-    if (h > 0) return `${h}ч. ${m}м.`;
-    return `${m}м.`;
-  }
-
-  // ────────────────────��────── DAILY/WEEKLY REPORTS ────────────────
-  async function sendDailyReport() {
-    const ords = readJSON(ORDERS_FILE, { delivery: [], taxi: [] });
-    const staff = readJSON(STAFF_FILE, {});
-    const now = Date.now();
-    const dayStart = now - 24 * 3600000;
-
-    // Delivery
-    const dayDelivery = ords.delivery.filter(o => o.status === 'done' && o.createdAt >= dayStart);
-    const dayTaxi = ords.taxi.filter(o => o.status === 'done' && o.createdAt >= dayStart);
-
-    // Per courier payouts
-    const courierPayouts = {}; // uid -> { nick, bank, delivery, taxi }
-    for (const o of dayDelivery) {
-      if (!o.courierId) continue;
-      const p = staff[o.courierId];
-      if (!p) continue;
-      const hasBrandCar = (p.vehicles || []).some(v => v.brandColor) || (p.orgVehicles || []).length > 0;
-      const pct = hasBrandCar ? 0.10 : 0.15;
-      const wage = Math.round(o.total * (1 - pct) - (o.costTotal || 0));
-      if (!courierPayouts[o.courierId]) courierPayouts[o.courierId] = { nick: p.nick, bank: p.bank, delivery: 0, taxi: 0 };
-      courierPayouts[o.courierId].delivery += wage;
-    }
-    for (const o of dayTaxi) {
-      if (!o.courierId) continue;
-      const p = staff[o.courierId];
-      if (!p) continue;
-      const hasBrandCar = (p.vehicles || []).some(v => v.brandColor) || (p.orgVehicles || []).length > 0;
-      const pct = hasBrandCar ? 0.10 : 0.15;
-      const wage = Math.round(o.finalPrice * (1 - pct));
-      if (!courierPayouts[o.courierId]) courierPayouts[o.courierId] = { nick: p.nick, bank: p.bank, delivery: 0, taxi: 0 };
-      courierPayouts[o.courierId].taxi += wage;
-    }
-
-    const payoutLines = Object.entries(courierPayouts).map(([uid, c]) => {
-      const total = c.delivery + c.taxi;
-      return `• ${c.nick} — ${total}р. (счёт: ${c.bank})${c.delivery ? `\n  Доставка: ${c.delivery}р.` : ''}${c.taxi ? `\n  Такси: ${c.taxi}р.` : ''}`;
-    }).join('\n') || '(нет завершённых заказов)';
-
-    const text = `Еже��невный ��тчёт (${formatDateMSK()}):\n\nЗаказы доставки: ${dayDelivery.length}\nЗаказы такси: ${dayTaxi.length}\n\nВыплаты курьерам:\n${payoutLines}`;
-    const keyboard = kb([[{ label: 'Обработано', color: 'positive', payload: { action: 'report_processed', date: formatDateMSK() } }]]);
-
-    await sendMessage(CHATS.rukovodstvo, text, { keyboard }, 1);
-  }
-
-  async function sendWeeklyReport() {
-    const ords = readJSON(ORDERS_FILE, { delivery: [], taxi: [] });
-    const staff = readJSON(STAFF_FILE, {});
-    const now = Date.now();
-    const weekStart = now - 7 * 24 * 3600000;
-
-    const weekDelivery = ords.delivery.filter(o => o.status === 'done' && o.createdAt >= weekStart);
-    const weekTaxi = ords.taxi.filter(o => o.status === 'done' && o.createdAt >= weekStart);
-
-    // Revenue and payouts
-    let totalRevenue = 0;
-    const courierWeek = {}; // uid -> { nick, bank, wage, deliveryCnt, taxiCnt }
-
-    for (const o of [...weekDelivery, ...weekTaxi]) {
-      const price = o.total || o.finalPrice || 0;
-      const p = staff[o.courierId];
-      if (!p) continue;
-      const hasBrandCar = (p.vehicles || []).some(v => v.brandColor) || (p.orgVehicles || []).length > 0;
-      const pct = hasBrandCar ? 0.10 : 0.15;
-      const cost = o.costTotal || 0;
-      // Зарплата = Стоимость − Себестоимость − 15%(Стоимость)
-      const wage = Math.round(price * (1 - pct) - cost);
-      totalRevenue += Math.round(price * pct) - Math.round(cost * 0.05) - Math.round(wage * 0.05);
-
-      if (!courierWeek[o.courierId]) courierWeek[o.courierId] = { nick: p.nick, bank: p.bank, wage: 0, deliveryCnt: 0, taxiCnt: 0 };
-      courierWeek[o.courierId].wage += Math.max(0, wage);
-      if (o.type === 'delivery') courierWeek[o.courierId].deliveryCnt++;
-      else courierWeek[o.courierId].taxiCnt++;
-    }
-
-    // Online stats
-    const weekRanking = buildWeekRanking(getWeekStart());
-
-    const payoutLines = Object.entries(courierWeek).map(([uid, c]) => {
-      return `• ${c.nick} — ${c.wage}р. (счёт: ${c.bank})\n  Доставка: ${c.deliveryCnt} зак. | Такси: ${c.taxiCnt} зак.`;
-    }).join('\n') || '(нет)';
-
-    const topOnline = weekRanking.slice(0, 3).map((r, i) => {
-      const oj = readJSON(ONLINE_FILE, { stats: {} });
-      const ws = getWeekStart();
-      const ms = Object.entries((oj.stats[r.uid] || {}).weeklyMs || {}).filter(([d]) => d >= ws).reduce((s, [, v]) => s + v, 0);
-      const staffEntry = Object.values(staff).find(s => String(s.uid) === String(r.uid));
-      return `${i + 1}. ${staffEntry?.nick || 'id' + r.uid} — ${msToHuman(ms)}`;
-    }).join('\n');
-
-    const text = `Еженедельный отчёт (${formatDateMSK()}):\n\nЗаказы доставки: ${weekDelivery.length}\nЗаказы такси: ${weekTaxi.length}\n\nДоход организации: ${Math.max(0, totalRevenue)}р.\n\nЗарплаты сотрудников:\n${payoutLines}\n\nТоп по онлайну за неделю:\n${topOnline || '(нет данных)'}`;
-    const keyboard = kb([[{ label: 'Обработано', color: 'positive', payload: { action: 'report_processed', date: formatDateMSK() } }]]);
-
-    await sendMessage(CHATS.rukovodstvo, text, { keyboard }, 1);
-  }
-
-  // Schedule daily (18:00 MSK) and weekly (Sunday 18:00 MSK)
-  function scheduleReports() {
-    function msUntil18MSK() {
-      const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
-      const next = new Date(now);
-      next.setHours(18, 0, 0, 0);
-      if (next <= now) next.setDate(next.getDate() + 1);
-      return next - now;
-    }
-
-    function tick() {
-      const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
-      const isWeekly = now.getDay() === 0; // Sunday
-      if (isWeekly) sendWeeklyReport().catch(e => console.error('[Bot] weeklyReport:', e.message));
-      else sendDailyReport().catch(e => console.error('[Bot] dailyReport:', e.message));
-      setTimeout(tick, msUntil18MSK());
-    }
-
-    setTimeout(tick, msUntil18MSK());
-    console.log('[Bot] Отчёты запланированы (18:00 МСК)');
-  }
-
-  // ─────────────────────────── EXISTING CHAT COMMANDS ──────────────
-  // Preserved from original bot: !пост, !приветствие, !закреп, !кик, !увед, !диагностика, !бан, !мут, !разбан, !размут
-
-  async function reuploadPhotoToGroup(photoAttachment, groupId, groupKey) {
+  // Роль: сначала из staff-файла, потом по членству в чатах руководства/СС
+  let role = profile?.role || null;
+  if (!role) {
+    // Проверяем членство в чате Руководство → РС, СС-чатов → СС
     try {
-      const sizes = photoAttachment.sizes || [];
-      if (!sizes.length) return null;
-      sizes.sort((a, b) => (b.width * b.height) - (a.width * a.height));
-      const photoUrl = sizes[0].url;
-      const photoResponse = await fetch(photoUrl);
-      const photoBuffer = await photoResponse.arrayBuffer();
-      const uploadServer = await callVK('photos.getWallUploadServer', { group_id: groupId }, groupKey);
-      const FormData = require('form-data');
-      const formData = new FormData();
-      formData.append('photo', Buffer.from(photoBuffer), { filename: 'photo.jpg', contentType: 'image/jpeg' });
-      const uploadResponse = await fetch(uploadServer.upload_url, { method: 'POST', body: formData, headers: formData.getHeaders() });
-      const uploadResult = await uploadResponse.json();
-      const saveResult = await callVK('photos.saveWallPhoto', { group_id: groupId, photo: uploadResult.photo, server: uploadResult.server, hash: uploadResult.hash }, groupKey);
-      if (saveResult && saveResult[0]) {
-        const saved = saveResult[0];
-        return `photo${saved.owner_id}_${saved.id}`;
-      }
-      return null;
-    } catch (e) { console.error('[Bot] reuploadPhoto:', e.message); return null; }
-  }
-
-  function createUserLink(user) { return `[vk.com/id${user.id}|${user.first_name} ${user.last_name}]`; }
-  function extractUserId(link) {
-    const patterns = [/vk\.com\/id(\d+)/, /\[vk\.com\/id(\d+)\|/, /^id(\d+)$/, /^(\d+)$/];
-    for (const p of patterns) { const m = link.match(p); if (m) return parseInt(m[1]); }
-    return null;
-  }
-  function parseDuration(text) {
-    text = text.toLowerCase().trim();
-    if (text.match(/\d+\s*(мин|м|min)/)) return parseInt(text.match(/(\d+)/)[1]);
-    if (text.match(/\d+\s*(час|ч|h|hour)/)) return parseInt(text.match(/(\d+)/)[1]) * 60;
-    if (text.match(/\d+\s*(день|д|d|day)/)) return parseInt(text.match(/(\d+)/)[1]) * 1440;
-    return null;
-  }
-
-  async function handleChatCommand(event, groupKey) {
-    const text = (event.text || '').trim();
-    const uid = event.from_id;
-    const peerId = event.peer_id;
-    const reply = event.reply_message;
-
-    if (!text.startsWith('!')) return false;
-
-    const parts = text.split(/\s+/);
-    const cmd = parts[0].toLowerCase();
-
-    // Mute check
-    if (uid > 0) {
-      const muteInfo = isMuted(uid);
-      if (muteInfo && cmd !== '!диагностика') {
-        const remaining = Math.ceil((muteInfo.endDate - Date.now()) / 60000);
-        await sendMessage(peerId, `Вы замучены ещё на ${remaining} мин. (${muteInfo.reason})`, {}, groupKey);
-        return true;
-      }
-    }
-
-    // !чат
-    if (cmd === '!чат') {
-      await sendMessage(peerId, `ID этого чата: ${peerId}`, {}, groupKey);
-      return true;
-    }
-
-    // !стата — работает в любом чате с правильным токеном группы
-    if (cmd === '!стата') {
-      await handleStatsCommand(event, groupKey);
-      return true;
-    }
-
-    // Permission-gated commands
-    const role = await getUserRole(uid);
-    const isRs = role === 'rs';
-    const isSs = role === 'ss' || isRs;
-
-    // !пост [��оставка|такси] — публикация на стену группы
-    // Если аргумент не указан, определяем по текущему чату
-    if (cmd === '!пост') {
-      if (!isSs) { await sendMessage(peerId, 'Команда доступна только РС и СС', {}, groupKey); return true; }
-      if (!reply) { await sendMessage(peerId, 'Ответьте на сообщение для публикации', {}, groupKey); return true; }
-
-      // Определяем целевую группу
-      let targetArg = (parts[1] || '').toLowerCase();
-      let targetGroupId = null;
-      let targetGroupKey = null;
-      let targetLabel = '';
-
-      // Автоопределение по чатам
-      const deliveryChats = [CHATS.dispetcherskaya, CHATS.ss, CHATS.fludilka, CHATS.uchebny].filter(Boolean);
-      const taxiChats = [CHATS.taxiDispetcherskaya, CHATS.taxiSs, CHATS.taxiFludilka, CHATS.taxiUchebny].filter(Boolean);
-
-      if (targetArg === 'доставка' || targetArg === 'delivery') {
-        targetGroupId = G2_ID;
-        targetGroupKey = 2;
-        targetLabel = 'Доставка (группа 2)';
-      } else if (targetArg === 'такси' || targetArg === 'taxi') {
-        targetGroupId = G3_ID;
-        targetGroupKey = 3;
-        targetLabel = 'Такси (группа 3)';
-      } else if (deliveryChats.includes(peerId)) {
-        // Если в чате доставки — публикуем в группу доставки
-        targetGroupId = G2_ID;
-        targetGroupKey = 2;
-        targetLabel = 'Доставка (группа 2)';
-      } else if (taxiChats.includes(peerId)) {
-        // Если в чате такси ��� публикуем в группу такси
-        targetGroupId = G3_ID;
-        targetGroupKey = 3;
-        targetLabel = 'Такси (группа 3)';
-      } else {
-        // По умолчанию — доставка
-        targetGroupId = G2_ID;
-        targetGroupKey = 2;
-        targetLabel = 'Доставка (группа 2)';
-      }
-
-      if (!targetGroupId || targetGroupId === '0') {
-        await sendMessage(peerId, `Группа не настроена (${targetLabel})`, {}, groupKey);
-        return true;
-      }
-
+      const rmembers = CHATS.rukovodstvo
+        ? await callVK('messages.getConversationMembers', { peer_id: CHATS.rukovodstvo }, 1)
+        : { items: [] };
+      if ((rmembers.items || []).some(m => m.member_id === uid)) role = 'rs';
+    } catch (_) { }
+    if (!role) {
       try {
-        const msg = reply; const postText = msg.text || ''; const attachments = [];
-        for (const att of msg.attachments || []) {
-          if (att.type === 'photo' && att.photo) {
-            const pid = await reuploadPhotoToGroup(att.photo, targetGroupId, targetGroupKey);
-            if (pid) attachments.push(pid);
-          } else if (att.type === 'video' && att.video) {
-            let vid = `video${att.video.owner_id}_${att.video.id}`; if (att.video.access_key) vid += `_${att.video.access_key}`; attachments.push(vid);
-          }
-        }
-        console.log(`[Bot] !пост -> group: ${targetGroupId}, attachments: ${attachments.length}`);
-        await callVK('wall.post', { owner_id: `-${targetGroupId}`, message: postText, attachments: attachments.join(','), from_group: 1 }, targetGroupKey);
-        await sendMessage(peerId, `Пост опубликован: ${targetLabel}`, {}, groupKey);
-      } catch (e) {
-        console.error(`[Bot] !пост ERROR: ${e.message}`);
-        await sendMessage(peerId, 'Ошибка публикации: ' + e.message, {}, groupKey);
+        const ssd = CHATS.ss ? await callVK('messages.getConversationMembers', { peer_id: CHATS.ss }, 2) : { items: [] };
+        const sst = CHATS.taxiSs ? await callVK('messages.getConversationMembers', { peer_id: CHATS.taxiSs }, 3) : { items: [] };
+        if ((ssd.items || []).some(m => m.member_id === uid) || (sst.items || []).some(m => m.member_id === uid)) role = 'ss';
+      } catch (_) { }
+    }
+    if (!role) role = 'kurier';
+  }
+
+  const nick = profile?.nick || `id${uid}`;
+  const roleAbbr = { rs: 'РС', ss: 'СС', kurier: 'Курьер', stazher: 'Стажёр' }[role] || role;
+
+  // Орг-принадлежность из профиля, иначе по членству
+  let orgs = [];
+  if (profile?.groups && profile.groups.length) {
+    orgs = profile.groups;
+  } else {
+    try {
+      if (CHATS.dispetcherskaya) {
+        const dm = await callVK('messages.getConversationMembers', { peer_id: CHATS.dispetcherskaya }, 2);
+        if ((dm.items || []).some(m => m.member_id === uid)) orgs.push('delivery');
       }
-      return true;
-    }
-
-    // !приветствие [чат]
-    if (cmd === '!приветствие') {
-      if (!isRs) { await sendMessage(peerId, 'Только РС', {}, groupKey); return true; }
-      if (!reply) { await sendMessage(peerId, 'Ответьте на сообщение с текстом приветствия', {}, groupKey); return true; }
-      const targetChat = parts[1] ? parseInt(parts[1]) : peerId;
-      storage.greetings.set(targetChat, reply.text || '');
-      await sendMessage(peerId, `Приветствие для чата ${targetChat} установлено`, {}, groupKey);
-      return true;
-    }
-
-    // !закреп
-    if (cmd === '!закреп') {
-      if (!isRs) { await sendMessage(peerId, 'Только РС', {}, groupKey); return true; }
-      if (!reply) { await sendMessage(peerId, 'Ответьте на сообщение дл�� закрепления', {}, groupKey); return true; }
-      try {
-        await callVK('messages.pin', { peer_id: peerId, conversation_message_id: reply.conversation_message_id });
-        await sendMessage(peerId, 'Сообщение закреплено', {}, groupKey);
-      } catch (e) { await sendMessage(peerId, 'Ошибка закрепа: ' + e.message, {}, groupKey); }
-      return true;
-    }
-
-    // !кик [@пользователь | id | реплай] [все | чат1,чат2,...] [причина]
-    // Примеры:
-    //   !кик (ответом на сообщение)            — кик из текущего чата
-    //   !кик @id12345                           — кик из текущего чата
-    //   !кик @id12345 все Нарушение правил      — кик из ВСЕХ чатов организации
-    //   !кик @id12345 доставка Флуд             — кик из всех чатов доставки
-    //   !кик @id12345 такси                     — кик из всех чатов та��си
-    if (cmd === '!кик') {
-      if (!isSs) { await sendMessage(peerId, 'Только РС и СС', {}, groupKey); return true; }
-
-      let targetId = null;
-      let argOffset = 1; // индекс следующего аргумента после команды
-      if (reply) {
-        targetId = reply.from_id;
-        argOffset = 1;
-      } else if (parts[1]) {
-        targetId = extractUserId(parts[1]);
-        argOffset = 2;
+    } catch (_) { }
+    try {
+      if (CHATS.taxiDispetcherskaya) {
+        const tm = await callVK('messages.getConversationMembers', { peer_id: CHATS.taxiDispetcherskaya }, 3);
+        if ((tm.items || []).some(m => m.member_id === uid)) orgs.push('taxi');
       }
-      if (!targetId || targetId <= 0) {
-        await sendMessage(peerId,
-          'Укажите пользователя. Использование:\n!кик (ответом) [все|доставка|такси] [причина]\n!кик @id [все|��оставка|такси] [причина]',
-          {}, groupKey);
-        return true;
-      }
+    } catch (_) { }
+    if (!orgs.length) orgs = ['delivery']; // если не определить — показываем как delivery
+  }
 
-      // Определяем, из каких чатов кикать
-      const scopeArg = (parts[argOffset] || '').toLowerCase();
-      const reasonArg = parts.slice(argOffset + (['все', 'доставка', 'такси'].includes(scopeArg) ? 1 : 0)).join(' ') || 'Нарушение правил';
+  let newStatus, online, afk;
 
-      let kickChatIds = []; // peer_ids
-      let kickGroupKey = groupKey;
-
-      if (scopeArg === 'все') {
-        // Все 12 чатов
-        kickChatIds = Object.values(CHATS).filter(v => v > 0);
-        kickGroupKey = 1; // главный токен пробуем для каждого
-      } else if (scopeArg === 'доставка') {
-        kickChatIds = [CHATS.dispetcherskaya, CHATS.ss, CHATS.fludilka, CHATS.uchebny].filter(v => v > 0);
-        kickGroupKey = 2;
-      } else if (scopeArg === 'такси') {
-        kickChatIds = [CHATS.taxiDispetcherskaya, CHATS.taxiSs, CHATS.taxiFludilka, CHATS.taxiUchebny].filter(v => v > 0);
-        kickGroupKey = 3;
-      } else {
-        // Только текущий чат
-        kickChatIds = [peerId];
-        kickGroupKey = groupKey;
-      }
-
-      const target = await getUser(targetId, groupKey);
-      const targetName = target ? createUserLink(target) : `id${targetId}`;
-
-      let kickedFrom = [];
-      let errors = [];
-
-      for (const chatPeer of kickChatIds) {
-        try {
-          // Пробуем через соответствующий токен, если не получается — через groupKey=1
-          let gk = kickGroupKey;
-          if (chatPeer === CHATS.dispetcherskaya || chatPeer === CHATS.ss || chatPeer === CHATS.fludilka || chatPeer === CHATS.uchebny) gk = 2;
-          else if (chatPeer === CHATS.taxiDispetcherskaya || chatPeer === CHATS.taxiSs || chatPeer === CHATS.taxiFludilka || chatPeer === CHATS.taxiUchebny) gk = 3;
-          else gk = 1;
-
-          await callVK('messages.removeChatUser', { chat_id: chatPeer - 2000000000, member_id: targetId }, gk);
-          kickedFrom.push(chatPeer);
-        } catch (e) {
-          // Не участник чата или нет прав — пропускаем тихо, фиксируем только реальные ошибки
-          if (!e.message.includes('not a chat member') && !e.message.includes('User not found')) {
-            errors.push(`${chatPeer}: ${e.message}`);
-          }
-        }
-      }
-
-      const kickedCount = kickedFrom.length;
-      const scopeLabel = scopeArg === 'все' ? 'всех чатов' : scopeArg === 'доставка' ? 'чатов доставки' : scopeArg === 'такси' ? 'чатов такси' : 'чат��';
-      const resultMsg = kickedCount > 0
-        ? `${targetName} искл��чён из ${kickedCount} ${scopeLabel}. Причина: ${reasonArg}`
-        : `Не удалось исключить ${targetName} (возможно, не ��частник или нет прав)`;
-
-      await sendMessage(peerId, resultMsg, {}, groupKey);
-
-      // Журнал кика в ��ат «Журнал Активности»
-      if (CHATS.zhurnal && kickedCount > 0) {
-        const kicker = await getUser(uid, groupKey);
-        const kickerName = kicker ? createUserLink(kicker) : `id${uid}`;
-        await sendMessage(CHATS.zhurnal,
-          `🔴 Кик: ${targetName} исключён ${kickerName} из ${kickedCount} чата(-ов) (${scopeLabel}).\nПричина: ${reasonArg}\n${formatDateMSK()}`,
-          {}, 1);
-      }
-
-      return true;
-    }
-
-    // !бан
-    if (cmd === '!бан') {
-      if (!isSs) { await sendMessage(peerId, 'Только РС и СС', {}, groupKey); return true; }
-      let targetId = null;
-      if (reply) targetId = reply.from_id;
-      else if (parts[1]) targetId = extractUserId(parts[1]);
-      if (!targetId) { await sendMessage(peerId, 'Укажите пользователя', {}, groupKey); return true; }
-      const days = parseInt(parts[reply ? 1 : 2]) || 0;
-      const reason = parts.slice(reply ? 2 : 3).join(' ') || 'Нарушение правил';
-      addToBlacklist(targetId, days, reason, uid);
-      const target = await getUser(targetId, groupKey);
-      await sendMessage(peerId, `${target ? createUserLink(target) : targetId} забанен на ${days || 'ПЕРМАНЕНТНО'} д��ей. Причина: ${reason}`, {}, groupKey);
-      return true;
-    }
-
-    // !разбан
-    if (cmd === '!разбан') {
-      if (!isSs) { await sendMessage(peerId, 'Только РС �� СС', {}, groupKey); return true; }
-      let targetId = parts[1] ? extractUserId(parts[1]) : null;
-      if (!targetId) { await sendMessage(peerId, 'Укажите пользователя', {}, groupKey); return true; }
-      const ok = removeFromBlacklist(targetId);
-      await sendMessage(peerId, ok ? `Пользователь ${targetId} разбанен` : 'Пользователь не в б��не', {}, groupKey);
-      return true;
-    }
-
-    // !мут
-    if (cmd === '!мут') {
-      if (!isSs) { await sendMessage(peerId, 'Только РС и СС', {}, groupKey); return true; }
-      let targetId = null;
-      if (reply) targetId = reply.from_id;
-      else if (parts[1]) targetId = extractUserId(parts[1]);
-      if (!targetId) { await sendMessage(peerId, 'Укажите пользователя', {}, groupKey); return true; }
-      const durationStr = reply ? parts[1] : parts[2];
-      const minutes = parseDuration(durationStr || '60 минут') || 60;
-      const reason = parts.slice(reply ? 2 : 3).join(' ') || 'Нарушение правил';
-      addMute(targetId, minutes, reason, uid);
-      const target = await getUser(targetId, groupKey);
-      await sendMessage(peerId, `${target ? createUserLink(target) : targetId} замучен на ${minutes} мин. Причина: ${reason}`, {}, groupKey);
-      return true;
-    }
-
-    // !размут
-    if (cmd === '!размут') {
-      if (!isSs) { await sendMessage(peerId, 'Только РС и СС', {}, groupKey); return true; }
-      let targetId = parts[1] ? extractUserId(parts[1]) : null;
-      if (!targetId) { await sendMessage(peerId, 'Укажите пользователя', {}, groupKey); return true; }
-      const ok = removeMute(targetId);
-      await sendMessage(peerId, ok ? `Мут снят с пользователя ${targetId}` : 'Пользователь не замуч��н', {}, groupKey);
-      return true;
-    }
-
-    // !увед
-    if (cmd === '!увед') {
-      if (!isSs) { await sendMessage(peerId, 'Только РС и СС', {}, groupKey); return true; }
-      const msg = reply ? reply.text : parts.slice(1).join(' ');
-      if (!msg) { await sendMessage(peerId, 'Укажите текст', {}, groupKey); return true; }
-      const chats = Object.values(CHATS).filter(v => v > 0);
-      let sent = 0;
-      for (const chatPeer of chats) {
-        try { await sendMessage(chatPeer, `📢 Объявление:\n${msg}`, {}, groupKey); sent++; } catch (_) { }
-      }
-      await sendMessage(peerId, `Уведомление отправлено в ${sent} чатов`, {}, groupKey);
-      return true;
-    }
-
-    // !диагностика
-    if (cmd === '!диагностика') {
-      const c = CHATS;
-      const checks = [
-        `Группа 1 (Kaskad Group):    ${G1_TOKEN ? '✅' : '❌'} ID=${G1_ID || '—'}`,
-        `Группа 2 (Kaskad Delivery): ${G2_TOKEN ? '✅' : '❌'} ID=${G2_ID || '—'}`,
-        `Группа 3 (Kaskad TAXI):     ${G3_TOKEN ? '✅' : '❌'} ID=${G3_ID || '—'}`,
-        `— Чаты (peer_id) —`,
-        `1.  Доска объявлений:         ${c.doska || '❌ не задан'}`,
-        `2.  Флудилка Delivery:        ${c.fludilka || '❌ не задан'}`,
-        `3.  Флудилка TAXI:            ${c.taxiFludilka || '❌ не задан'}`,
-        `4.  Журнал Активности:        ${c.zhurnal || '❌ не задан'}`,
-        `5.  Диспетчерская Delivery:   ${c.dispetcherskaya || '❌ не задан'}`,
-        `6.  Диспетчерская TAXI:       ${c.taxiDispetcherskaya || '❌ не задан'}`,
-        `7.  Старший состав Delivery:  ${c.ss || '❌ не задан'}`,
-        `8.  Старший состав TAXI:      ${c.taxiSs || '❌ не задан'}`,
-        `9.  Руководство:              ${c.rukovodstvo || '❌ не задан'}`,
-        `10. Спонсорская беседа:       ${c.sponsor || '❌ не задан'}`,
-        `11. Учебный центр Delivery:   ${c.uchebny || '❌ не задан'}`,
-        `12. Учебный центр TAXI:       ${c.taxiUchebny || '❌ не задан'}`,
-        `Онлайн в журнале: ${storage.online.size} чел.`,
-        `Активных заказов: ${storage.activeOrders.size} дост. | ${storage.activeTaxi.size} такси`,
-      ];
-      await sendMessage(peerId, `Диагностика:\n${checks.join('\n')}`, {}, groupKey);
-      return true;
-    }
-
+  if (cmd === '!онлайн') {
+    online = true; afk = false;
+    newStatus = statusText || (role === 'stazher' ? 'Экзамен' : 'На смене');
+  } else if (cmd === '!афк') {
+    online = true; afk = true;
+    newStatus = statusText || 'Не у ПК';
+  } else if (cmd === '!вышел') {
+    online = false; afk = false;
+    newStatus = '';
+  } else {
     return false;
   }
 
-  // ─────────────────────────── CALLBACK HANDLER ─────────────────
-  async function handleCallback(event, groupKey) {
-    // Ensure uid is always a number for consistent Map key lookup
-    const uid = parseInt(event.user_id || event.from_id);
-    const peerId = event.peer_id;
-    let payload;
-    try { payload = typeof event.payload === 'string' ? JSON.parse(event.payload) : event.payload; }
-    catch (_) { payload = {}; }
+  // Update online map
+  const now = Date.now();
+  const prev = storage.online.get(uid);
+  if (prev && prev.online && !online) {
+    const dur = now - (prev.since || now);
+    updateOnlineStats(uid, dur);
+  }
 
-    const action = payload.action;
-    const chatLabel = peerId > 2000000000 ? `chat_id: ${peerIdToChatId(peerId)}` : `dm: ${peerId}`;
-    console.log(`[Bot][G${groupKey}] callback <- peer_id: ${peerId} (${chatLabel}), user: ${uid}, action: ${action}`);
+  if (online) {
+    storage.online.set(uid, { nick, role, roleAbbr, orgs, status: newStatus, afk, online: true, since: now });
+  } else {
+    storage.online.delete(uid);
+  }
 
-    // Accept order
-    if (action === 'accept_order') {
-      const orderId = payload.orderId;
-      const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
-      if (!order || order.status !== 'pending') { return; }
+  // Persist
+  const oj = readJSON(ONLINE_FILE, { sessions: {}, stats: {} });
+  if (online) {
+    oj.sessions[uid] = { nick, role, roleAbbr, orgs, status: newStatus, afk, online: true, since: now };
+  } else {
+    delete oj.sessions[uid];
+  }
+  writeJSON(ONLINE_FILE, oj);
 
-      // Check online status - use parseInt to ensure consistent Map key
-      const onlineInfo = storage.online.get(uid);
-      console.log(`[Bot] accept_order: uid=${uid}, onlineInfo=`, onlineInfo ? JSON.stringify(onlineInfo) : 'null', ', online keys:', [...storage.online.keys()]);
-      if (!onlineInfo || !onlineInfo.online) {
-        await sendMessage(uid, 'Вы не в онлайне. Напишите !онлайн в журнале активности.', {}, 1);
-        return;
-      }
+  // Build server list message
+  const serverList = buildServerList();
 
-      await handleCourierAcceptOrder(event, orderId);
-      return;
+  let actionText;
+  if (cmd === '!онлайн') actionText = `${nick} [${roleAbbr}] вышел на смену. Статус: ${newStatus}`;
+  else if (cmd === '!афк') actionText = `${nick} [${roleAbbr}] ушёл в АФК. (${newStatus})`;
+  else actionText = `${nick} [${roleAbbr}] завершил смену.`;
+
+  // Отправляем с постоянной клавиатурой кнопок !онлайн / !афк / !вышел
+  await sendMessage(peerId, `${actionText}\n\n${serverList}`, { keyboard: journalKeyboard() }, gk);
+  return true;
+}
+
+function buildServerList() {
+  const activeList = [];
+  const afkList = [];
+
+  storage.online.forEach((info) => {
+    const line = `• ${info.nick} [${info.roleAbbr || info.role}] — ${info.status || ''}`;
+    if (info.afk) afkList.push(line);
+    else activeList.push(line);
+  });
+
+  const lines = [];
+  lines.push(`На смене (${activeList.length}):`);
+  if (activeList.length) lines.push(...activeList);
+  else lines.push('  (никого нет)');
+
+  if (afkList.length) {
+    lines.push(`\nАФК (${afkList.length}):`);
+    lines.push(...afkList);
+  }
+
+  return lines.join('\n');
+}
+
+function updateOnlineStats(uid, durationMs) {
+  const key = String(uid);
+  const oj = readJSON(ONLINE_FILE, { sessions: {}, stats: {} });
+  if (!oj.stats) oj.stats = {};
+  if (!oj.stats[key]) oj.stats[key] = { totalMs: 0, weeklyMs: {} };
+  if (!oj.stats[key].weeklyMs) oj.stats[key].weeklyMs = {};
+  oj.stats[key].totalMs = (oj.stats[key].totalMs || 0) + durationMs;
+
+  const dayKey = new Date().toISOString().slice(0, 10);
+  oj.stats[key].weeklyMs[dayKey] = (oj.stats[key].weeklyMs[dayKey] || 0) + durationMs;
+
+  writeJSON(ONLINE_FILE, oj);
+}
+
+async function handleStatsCommand(event, groupKey) {
+  const text = (event.text || '').trim();
+  const uid = event.from_id;
+  const peerId = event.peer_id;
+  const gk = groupKey || 1; // используем переданный токен, иначе группа 1
+
+  if (text.toLowerCase() !== '!стата') return;
+
+  const key = String(uid);
+  const oj = readJSON(ONLINE_FILE, { sessions: {}, stats: {} });
+  if (!oj.stats) oj.stats = {};
+  const myStats = oj.stats[key];
+  if (!myStats) { await sendMessage(peerId, 'Статистика не найдена. Выйдите на смену через !онлайн.', { keyboard: journalKeyboard() }, gk); return; }
+
+  const totalMs = myStats.totalMs || 0;
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayMs = (myStats.weeklyMs || {})[todayKey] || 0;
+
+  const weekStart = getWeekStart();
+  let weekMs = 0;
+  for (const [day, ms] of Object.entries(myStats.weeklyMs || {})) {
+    if (day >= weekStart) weekMs += ms;
+  }
+
+  const weekRanking = buildWeekRanking(weekStart);
+  const myRank = weekRanking.findIndex(r => r.uid === key) + 1;
+
+  const msgCount = myStats.msgCount || 0;
+
+  const text2 = `Статистика:\n\nВсего онлайн: ${msToHuman(totalMs)}\nОнлайн сегодня: ${msToHuman(todayMs)}\nОнлайн за неделю: ${msToHuman(weekMs)}\nТоп по онлайну за неделю: ${myRank > 0 ? myRank + ' место' : '—'}${msgCount ? `\nСообщений: ${msgCount}` : ''}`;
+
+  await sendMessage(peerId, text2, { keyboard: journalKeyboard() }, gk);
+}
+
+function getWeekStart() {
+  const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+  const day = d.getDay(); // 0=Sun
+  const diff = (day + 6) % 7; // Mon=0
+  d.setDate(d.getDate() - diff);
+  return d.toISOString().slice(0, 10);
+}
+
+function buildWeekRanking(weekStart) {
+  const oj = readJSON(ONLINE_FILE, { stats: {} });
+  const ranking = [];
+  for (const [uid, stats] of Object.entries(oj.stats || {})) {
+    if (!stats || typeof stats !== 'object') continue;
+    let weekMs = 0;
+    for (const [day, ms] of Object.entries(stats.weeklyMs || {})) {
+      if (day >= weekStart) weekMs += (ms || 0);
     }
+    if (weekMs > 0) ranking.push({ uid: String(uid), weekMs });
+  }
+  ranking.sort((a, b) => b.weekMs - a.weekMs);
+  return ranking;
+}
 
-    // Toggle purchase item
-    if (action === 'toggle_buy') {
-      const { orderId, itemName } = payload;
-      const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
-      if (!order || !order.purchaseItems) return;
-      const item = order.purchaseItems.find(it => it.name === itemName);
-      if (item) item.bought = !item.bought;
+function msToHuman(ms) {
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  if (h > 0) return `${h}ч. ${m}м.`;
+  return `${m}м.`;
+}
 
-      // Rebuild keyboard
-      const buttons = order.purchaseItems.map(it => ([{
-        label: `${it.bought ? '[✓]' : '[ ]'} ${it.name} x${it.qty}`,
-        color: it.bought ? 'positive' : 'secondary',
-        payload: { action: 'toggle_buy', orderId, itemName: it.name },
-      }]));
-      const allBought = order.purchaseItems.every(it => it.bought);
-      if (!allBought) {
-        buttons.push([{ label: 'Всё куплено / Готовлю', color: 'positive', payload: { action: 'cooking_done', orderId } }]);
-      } else {
-        buttons.push([{ label: 'Готово! Еду к клиенту', color: 'positive', payload: { action: 'start_deliver', orderId } }]);
-      }
+// ────────────────────��────── DAILY/WEEKLY REPORTS ────────────────
+async function sendDailyReport() {
+  const ords = readJSON(ORDERS_FILE, { delivery: [], taxi: [] });
+  const staff = readJSON(STAFF_FILE, {});
+  const now = Date.now();
+  const dayStart = now - 24 * 3600000;
 
-      await editMessage(uid, order.purchaseMsgId, `Закупки (заказ ${getOrderNumDisplay(order, orderId)}):`, { keyboard: kb(buttons) }, 1);
-      return;
+  // Delivery
+  const dayDelivery = ords.delivery.filter(o => o.status === 'done' && o.createdAt >= dayStart);
+  const dayTaxi = ords.taxi.filter(o => o.status === 'done' && o.createdAt >= dayStart);
+
+  // Per courier payouts
+  const courierPayouts = {}; // uid -> { nick, bank, delivery, taxi }
+  for (const o of dayDelivery) {
+    if (!o.courierId) continue;
+    const p = staff[o.courierId];
+    if (!p) continue;
+    const hasBrandCar = (p.vehicles || []).some(v => v.brandColor) || (p.orgVehicles || []).length > 0;
+    const pct = hasBrandCar ? 0.10 : 0.15;
+    const wage = Math.round(o.total * (1 - pct) - (o.costTotal || 0));
+    if (!courierPayouts[o.courierId]) courierPayouts[o.courierId] = { nick: p.nick, bank: p.bank, delivery: 0, taxi: 0 };
+    courierPayouts[o.courierId].delivery += wage;
+  }
+  for (const o of dayTaxi) {
+    if (!o.courierId) continue;
+    const p = staff[o.courierId];
+    if (!p) continue;
+    const hasBrandCar = (p.vehicles || []).some(v => v.brandColor) || (p.orgVehicles || []).length > 0;
+    const pct = hasBrandCar ? 0.10 : 0.15;
+    const wage = Math.round(o.finalPrice * (1 - pct));
+    if (!courierPayouts[o.courierId]) courierPayouts[o.courierId] = { nick: p.nick, bank: p.bank, delivery: 0, taxi: 0 };
+    courierPayouts[o.courierId].taxi += wage;
+  }
+
+  const payoutLines = Object.entries(courierPayouts).map(([uid, c]) => {
+    const total = c.delivery + c.taxi;
+    return `• ${c.nick} — ${total}р. (счёт: ${c.bank})${c.delivery ? `\n  Доставка: ${c.delivery}р.` : ''}${c.taxi ? `\n  Такси: ${c.taxi}р.` : ''}`;
+  }).join('\n') || '(нет завершённых заказов)';
+
+  const text = `Еже��невный ��тчёт (${formatDateMSK()}):\n\nЗаказы доставки: ${dayDelivery.length}\nЗаказы такси: ${dayTaxi.length}\n\nВыплаты курьерам:\n${payoutLines}`;
+  const keyboard = kb([[{ label: 'Обработано', color: 'positive', payload: { action: 'report_processed', date: formatDateMSK() } }]]);
+
+  await sendMessage(CHATS.rukovodstvo, text, { keyboard }, 1);
+}
+
+async function sendWeeklyReport() {
+  const ords = readJSON(ORDERS_FILE, { delivery: [], taxi: [] });
+  const staff = readJSON(STAFF_FILE, {});
+  const now = Date.now();
+  const weekStart = now - 7 * 24 * 3600000;
+
+  const weekDelivery = ords.delivery.filter(o => o.status === 'done' && o.createdAt >= weekStart);
+  const weekTaxi = ords.taxi.filter(o => o.status === 'done' && o.createdAt >= weekStart);
+
+  // Revenue and payouts
+  let totalRevenue = 0;
+  const courierWeek = {}; // uid -> { nick, bank, wage, deliveryCnt, taxiCnt }
+
+  for (const o of [...weekDelivery, ...weekTaxi]) {
+    const price = o.total || o.finalPrice || 0;
+    const p = staff[o.courierId];
+    if (!p) continue;
+    const hasBrandCar = (p.vehicles || []).some(v => v.brandColor) || (p.orgVehicles || []).length > 0;
+    const pct = hasBrandCar ? 0.10 : 0.15;
+    const cost = o.costTotal || 0;
+    // Зарплата = Стоимость − Себестоимость − 15%(Стоимость)
+    const wage = Math.round(price * (1 - pct) - cost);
+    totalRevenue += Math.round(price * pct) - Math.round(cost * 0.05) - Math.round(wage * 0.05);
+
+    if (!courierWeek[o.courierId]) courierWeek[o.courierId] = { nick: p.nick, bank: p.bank, wage: 0, deliveryCnt: 0, taxiCnt: 0 };
+    courierWeek[o.courierId].wage += Math.max(0, wage);
+    if (o.type === 'delivery') courierWeek[o.courierId].deliveryCnt++;
+    else courierWeek[o.courierId].taxiCnt++;
+  }
+
+  // Online stats
+  const weekRanking = buildWeekRanking(getWeekStart());
+
+  const payoutLines = Object.entries(courierWeek).map(([uid, c]) => {
+    return `• ${c.nick} — ${c.wage}р. (счёт: ${c.bank})\n  Доставка: ${c.deliveryCnt} зак. | Такси: ${c.taxiCnt} зак.`;
+  }).join('\n') || '(нет)';
+
+  const topOnline = weekRanking.slice(0, 3).map((r, i) => {
+    const oj = readJSON(ONLINE_FILE, { stats: {} });
+    const ws = getWeekStart();
+    const ms = Object.entries((oj.stats[r.uid] || {}).weeklyMs || {}).filter(([d]) => d >= ws).reduce((s, [, v]) => s + v, 0);
+    const staffEntry = Object.values(staff).find(s => String(s.uid) === String(r.uid));
+    return `${i + 1}. ${staffEntry?.nick || 'id' + r.uid} — ${msToHuman(ms)}`;
+  }).join('\n');
+
+  const text = `Еженедельный отчёт (${formatDateMSK()}):\n\nЗаказы доставки: ${weekDelivery.length}\nЗаказы такси: ${weekTaxi.length}\n\nДоход организации: ${Math.max(0, totalRevenue)}р.\n\nЗарплаты сотрудников:\n${payoutLines}\n\nТоп по онлайну за неделю:\n${topOnline || '(нет данных)'}`;
+  const keyboard = kb([[{ label: 'Обработано', color: 'positive', payload: { action: 'report_processed', date: formatDateMSK() } }]]);
+
+  await sendMessage(CHATS.rukovodstvo, text, { keyboard }, 1);
+}
+
+// Schedule daily (18:00 MSK) and weekly (Sunday 18:00 MSK)
+function scheduleReports() {
+  function msUntil18MSK() {
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+    const next = new Date(now);
+    next.setHours(18, 0, 0, 0);
+    if (next <= now) next.setDate(next.getDate() + 1);
+    return next - now;
+  }
+
+  function tick() {
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+    const isWeekly = now.getDay() === 0; // Sunday
+    if (isWeekly) sendWeeklyReport().catch(e => console.error('[Bot] weeklyReport:', e.message));
+    else sendDailyReport().catch(e => console.error('[Bot] dailyReport:', e.message));
+    setTimeout(tick, msUntil18MSK());
+  }
+
+  setTimeout(tick, msUntil18MSK());
+  console.log('[Bot] Отчёты запланированы (18:00 МСК)');
+}
+
+// ─────────────────────────── EXISTING CHAT COMMANDS ──────────────
+// Preserved from original bot: !пост, !приветствие, !закреп, !кик, !увед, !диагностика, !бан, !мут, !разбан, !размут
+
+async function reuploadPhotoToGroup(photoAttachment, groupId, groupKey) {
+  try {
+    const sizes = photoAttachment.sizes || [];
+    if (!sizes.length) return null;
+    sizes.sort((a, b) => (b.width * b.height) - (a.width * a.height));
+    const photoUrl = sizes[0].url;
+    const photoResponse = await fetch(photoUrl);
+    const photoBuffer = await photoResponse.arrayBuffer();
+    const uploadServer = await callVK('photos.getWallUploadServer', { group_id: groupId }, groupKey);
+    const FormData = require('form-data');
+    const formData = new FormData();
+    formData.append('photo', Buffer.from(photoBuffer), { filename: 'photo.jpg', contentType: 'image/jpeg' });
+    const uploadResponse = await fetch(uploadServer.upload_url, { method: 'POST', body: formData, headers: formData.getHeaders() });
+    const uploadResult = await uploadResponse.json();
+    const saveResult = await callVK('photos.saveWallPhoto', { group_id: groupId, photo: uploadResult.photo, server: uploadResult.server, hash: uploadResult.hash }, groupKey);
+    if (saveResult && saveResult[0]) {
+      const saved = saveResult[0];
+      return `photo${saved.owner_id}_${saved.id}`;
     }
+    return null;
+  } catch (e) { console.error('[Bot] reuploadPhoto:', e.message); return null; }
+}
 
-    // Cooking done
-    if (action === 'cooking_done') {
-      const { orderId } = payload;
-      const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
-      if (!order) return;
-      order.status = 'accepted';
-      // Update dispatch message
-      const ids = storage.orderMsgIds.get(orderId);
-      if (ids) {
-        await editMessage(ids.chatId, ids.dispatchMsgId, `Заказ ${getOrderNumDisplay(order, orderId)} — готовитс�� (курьер: ${order.courierNick})`, {
-          keyboard: kb([[{ label: 'Статус: Готовится', color: 'secondary', payload: {} }]])
-        }, 1);
-      }
-      // Notify client
-      await sendMessage(order.clientId, 'Ваш заказ готовится! Курьер скоро выедет.', {}, 2);
-      return;
-    }
+function createUserLink(user) { return `[vk.com/id${user.id}|${user.first_name} ${user.last_name}]`; }
+function extractUserId(link) {
+  const patterns = [/vk\.com\/id(\d+)/, /\[vk\.com\/id(\d+)\|/, /^id(\d+)$/, /^(\d+)$/];
+  for (const p of patterns) { const m = link.match(p); if (m) return parseInt(m[1]); }
+  return null;
+}
+function parseDuration(text) {
+  text = text.toLowerCase().trim();
+  if (text.match(/\d+\s*(мин|м|min)/)) return parseInt(text.match(/(\d+)/)[1]);
+  if (text.match(/\d+\s*(час|ч|h|hour)/)) return parseInt(text.match(/(\d+)/)[1]) * 60;
+  if (text.match(/\d+\s*(день|д|d|day)/)) return parseInt(text.match(/(\d+)/)[1]) * 1440;
+  return null;
+}
 
-    // Start delivery (delivery only — for taxi the driver uses "Прибыл" directly)
-    if (action === 'start_deliver') {
-      const { orderId } = payload;
-      const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
-      if (!order) return;
-      order.status = 'delivering';
-      const gKey = order.type === 'taxi' ? 3 : 2;
-      // Remind courier
-      await sendMessage(uid,
-        `Напоминание:\nКлиент: ${order.nick}\nАдрес: ${order.address || ((order.from?.name || '') + ' → ' + (order.to?.name || '')) || '—'}\nСумма: ${order.total || order.finalPrice}р.`,
-        {}, 1);
-      // Notify client
-      await sendMessage(order.clientId,
-        `Заказ готов! ${order.type === 'taxi' ? 'Водитель' : 'Курьер'} ${order.courierNick} едет к вам.`,
-        { keyboard: msgKb([[{ label: 'Статус заказа' }], [{ label: 'Ссылка на курье��а' }]]) }, gKey);
-      return;
-    }
+async function handleChatCommand(event, groupKey) {
+  const text = (event.text || '').trim();
+  const uid = event.from_id;
+  const peerId = event.peer_id;
+  const reply = event.reply_message;
 
-    // Courier arrived
-    if (action === 'courier_arrived') {
-      const { orderId } = payload;
-      const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
-      if (!order) return;
-      order.status = 'arrived';
-      await sendMessage(order.clientId, 'Курьер на месте!', {}, order.type === 'taxi' ? 3 : 2);
-      // Replace current message with finish button (inline)
-      await sendMessage(uid, `Заказ ${getOrderNumDisplay(order, orderId)} — вы на месте у клиента. Нажмите «Доставлен» после передачи:`,
-        { keyboard: kb([[{ label: 'Доставлен', color: 'positive', payload: { action: 'finish_order', orderId } }]]) }, 1);
-      return;
-    }
+  if (!text.startsWith('!')) return false;
 
-    // Finish order
-    if (action === 'finish_order') {
-      const { orderId } = payload;
-      const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
-      if (!order) return;
-      if (!['arrived', 'delivering'].includes(order.status)) {
-        await sendMessage(uid, `Нельзя завершить заказ со статусом «${order.status}». Сначала нажмите «Прибыл к клиенту».`, {}, 1);
-        return;
-      }
-      order.status = 'done';
-      order.finishedAt = Date.now();
+  const parts = text.split(/\s+/);
+  const cmd = parts[0].toLowerCase();
 
-      // Update stats
-      const staff = readJSON(STAFF_FILE, {});
-      if (order.courierId && staff[order.courierId]) {
-        if (order.type === 'taxi') staff[order.courierId].stats.taxiOrders = (staff[order.courierId].stats.taxiOrders || 0) + 1;
-        else staff[order.courierId].stats.deliveryOrders = (staff[order.courierId].stats.deliveryOrders || 0) + 1;
-        writeJSON(STAFF_FILE, staff);
-      }
-
-      // Persist
-      const ords = readJSON(ORDERS_FILE, { delivery: [], taxi: [] });
-      const list = order.type === 'taxi' ? ords.taxi : ords.delivery;
-      const idx = list.findIndex(o => o.id === orderId);
-      if (idx !== -1) list[idx] = order;
-      writeJSON(ORDERS_FILE, ords);
-
-      storage.activeOrders.delete(orderId);
-      storage.activeTaxi.delete(orderId);
-
-      // Notify client
-      const reviewLink = `vk.com/wall-${G1_ID}?w=wall-${G1_ID}_1`; // placeholder
-      await sendMessage(order.clientId,
-        `Заказ завершён! Спасибо!\nОставьте отзыв или жалобу: ${reviewLink}`,
-        { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) },
-        order.type === 'taxi' ? 3 : 2);
-
-      await sendMessage(uid, `Заказ ${getOrderNumDisplay(order, orderId)} завершён. Молодец!`, {}, 1);
-      return;
-    }
-
-    // Taxi: paid waiting
-    if (action === 'taxi_paid_waiting') {
-      const { orderId } = payload;
-      const order = storage.activeTaxi.get(orderId);
-      if (!order) return;
-      order.paidWaiting = true;
-      await sendMessage(order.clientId, 'Водитель начал платное ожидание.', {}, 3);
-      await sendMessage(uid, 'Платное ожидание включено.', {}, 1);
-      return;
-    }
-
-    // Report processed
-    if (action === 'report_processed') {
-      await sendMessage(peerId, `Отчёт обработан ✅`, {}, 1);
-      return;
+  // Mute check
+  if (uid > 0) {
+    const muteInfo = isMuted(uid);
+    if (muteInfo && cmd !== '!диагностика') {
+      const remaining = Math.ceil((muteInfo.endDate - Date.now()) / 60000);
+      await sendMessage(peerId, `Вы замучены ещё на ${remaining} мин. (${muteInfo.reason})`, {}, groupKey);
+      return true;
     }
   }
 
-  // ─────────────────────────── NEW-MEMBER GREETING ──────────────
-  async function handleNewMember(event, groupKey) {
-    const peerId = event.peer_id;
-    const newMembers = event.action?.member_ids || [event.action?.member_id].filter(Boolean);
-
-    // Если это журнал активности — сразу показываем кнопки смены
-    const isJournal = peerId === CHATS.zhurnal;
-
-    const greeting = storage.greetings.get(peerId);
-    for (const mid of newMembers) {
-      if (mid < 0) continue;
-      const user = await getUser(mid, groupKey);
-      const name = user ? `${user.first_name} ${user.last_name}` : `id${mid}`;
-      if (greeting) {
-        await sendMessage(peerId, greeting.replace('{name}', name).replace('{id}', mid),
-          isJournal ? { keyboard: journalKeyboard() } : {}, groupKey);
-      } else if (isJournal) {
-        await sendMessage(peerId,
-          `Приве��, ${name}! Нажми !онлайн чтобы начать смену.`,
-          { keyboard: journalKeyboard() }, groupKey);
-      }
-    }
+  // !чат
+  if (cmd === '!чат') {
+    await sendMessage(peerId, `ID этого чата: ${peerId}`, {}, groupKey);
+    return true;
   }
 
-  // ─────────────────────────── EVENT ROUTER ────────────────────
-  async function handleEvent(event, groupKey) {
+  // !стата — работает в любом чате с правильным токеном группы
+  if (cmd === '!стата') {
+    await handleStatsCommand(event, groupKey);
+    return true;
+  }
+
+  // Permission-gated commands
+  const role = await getUserRole(uid);
+  const isRs = role === 'rs';
+  const isSs = role === 'ss' || isRs;
+
+  // !пост [��оставка|такси] — публикация на стену группы
+  // Если аргумент не указан, определяем по текущему чату
+  if (cmd === '!пост') {
+    if (!isSs) { await sendMessage(peerId, 'Команда доступна только РС и СС', {}, groupKey); return true; }
+    if (!reply) { await sendMessage(peerId, 'Ответьте на сообщение для публикации', {}, groupKey); return true; }
+
+    // Определяем целевую группу
+    let targetArg = (parts[1] || '').toLowerCase();
+    let targetGroupId = null;
+    let targetGroupKey = null;
+    let targetLabel = '';
+
+    // Автоопределение по чатам
+    const deliveryChats = [CHATS.dispetcherskaya, CHATS.ss, CHATS.fludilka, CHATS.uchebny].filter(Boolean);
+    const taxiChats = [CHATS.taxiDispetcherskaya, CHATS.taxiSs, CHATS.taxiFludilka, CHATS.taxiUchebny].filter(Boolean);
+
+    if (targetArg === 'доставка' || targetArg === 'delivery') {
+      targetGroupId = G2_ID;
+      targetGroupKey = 2;
+      targetLabel = 'Доставка (группа 2)';
+    } else if (targetArg === 'такси' || targetArg === 'taxi') {
+      targetGroupId = G3_ID;
+      targetGroupKey = 3;
+      targetLabel = 'Такси (группа 3)';
+    } else if (deliveryChats.includes(peerId)) {
+      // Если в чате доставки — публикуем в группу доставки
+      targetGroupId = G2_ID;
+      targetGroupKey = 2;
+      targetLabel = 'Доставка (группа 2)';
+    } else if (taxiChats.includes(peerId)) {
+      // Если в чате такси ��� публикуем в группу такси
+      targetGroupId = G3_ID;
+      targetGroupKey = 3;
+      targetLabel = 'Такси (группа 3)';
+    } else {
+      // По умолчанию — доставка
+      targetGroupId = G2_ID;
+      targetGroupKey = 2;
+      targetLabel = 'Доставка (группа 2)';
+    }
+
+    if (!targetGroupId || targetGroupId === '0') {
+      await sendMessage(peerId, `Группа не настроена (${targetLabel})`, {}, groupKey);
+      return true;
+    }
+
     try {
-      const type = event.type;
-      const obj = event.object;
-
-      if (type === 'message_new') {
-        const msg = obj.message || obj;
-        const peerId = msg.peer_id;
-        const uid = msg.from_id;
-        const text = (msg.text || '').trim();
-
-        // Log every incoming message with chat ID
-        const chatLabel = peerId > 2000000000 ? `chat_id: ${peerIdToChatId(peerId)}` : `dm_user: ${peerId}`;
-        console.log(`[Bot][G${groupKey}] message_new <- peer_id: ${peerId} (${chatLabel}), from: ${uid}, text: "${text.slice(0, 50)}"`);
-
-        // Ignore bot messages
-        if (uid <= 0) return;
-
-        // Blacklist check
-        const banInfo = isBlacklisted(uid);
-        if (banInfo && peerId > 2000000000) return; // silently ignore banned users in chats
-
-        // Журнал активно��ти — только этот чат обрабатывает !онлайн/!афк/!вышел/!стата
-        // !стата также доступна во всех чатах через handleChatCommand
-        if (peerId === CHATS.zhurnal) {
-          await handleJournalMessage(msg, groupKey); // включает !стата
-          return;
-        }
-
-        // Chat commands (includes !стата, !диагностика, moderation etc.)
-        if (peerId > 2000000000) {
-          await handleChatCommand(msg, groupKey);
-          return;
-        }
-
-        // DMs — peer_id equals the user's vk id for private messages
-        if (peerId > 0 && peerId === uid) {
-          if (groupKey === 2) {
-            await handleDeliveryDM(msg);
-          } else if (groupKey === 3) {
-            // TAXI DISABLED — handleTaxiDM отключён
-            // await handleTaxiDM(msg);
-          } else if (groupKey === 1) {
-            // Handle vehicle add steps first
-            const sess = storage.staffSessions.get(uid) || { step: null };
-            const vehicleSteps = [
-              'staff_veh_custom_name', 'staff_veh_custom_photo', 'staff_veh_custom_brandcolor',
-              'staff_org_veh_select', 'staff_veh_delete',
-            ];
-            const vehicleTriggers = ['Добавить личное авто', 'Взять авто организации', 'Удалить авто'];
-            if (vehicleSteps.includes(sess.step) || vehicleTriggers.includes(text)) {
-              const handled = await handleStaffVehicleAdd(uid, peerId, text, msg);
-              if (handled) return;
-            }
-            // TAXI DISABLED — handleTaxiPointAdmin отключён
-            // const role = await getUserRole(uid);
-            // if (role === 'rs' || role === 'ss') {
-            //   const handled2 = await handleTaxiPointAdmin(uid, peerId, text, msg);
-            //   if (handled2) return;
-            // }
-            await handleGroup1DM(msg);
-          }
+      const msg = reply; const postText = msg.text || ''; const attachments = [];
+      for (const att of msg.attachments || []) {
+        if (att.type === 'photo' && att.photo) {
+          const pid = await reuploadPhotoToGroup(att.photo, targetGroupId, targetGroupKey);
+          if (pid) attachments.push(pid);
+        } else if (att.type === 'video' && att.video) {
+          let vid = `video${att.video.owner_id}_${att.video.id}`; if (att.video.access_key) vid += `_${att.video.access_key}`; attachments.push(vid);
         }
       }
-
-      if (type === 'message_event') {
-        const cbPeerId = obj.peer_id;
-        const cbLabel = cbPeerId > 2000000000 ? `chat_id: ${peerIdToChatId(cbPeerId)}` : `dm: ${cbPeerId}`;
-        console.log(`[Bot][G${groupKey}] message_event <- peer_id: ${cbPeerId} (${cbLabel}), user: ${obj.user_id}`);
-        await handleCallback(obj, groupKey);
-      }
-
-      if (type === 'message_new') {
-        const msg = obj.message || obj;
-        if (msg.action && (msg.action.type === 'chat_invite_user' || msg.action.type === 'chat_invite_user_by_link')) {
-          await handleNewMember(msg, groupKey);
-        }
-      }
-
-      // Group post in group 1 → repost to doska
-      if (type === 'wall_post_new' && groupKey === 1) {
-        const post = obj;
-        if (post.marked_as_ads || post.postponed) return;
-        const text = post.text || '';
-        const attachments = [];
-        for (const att of post.attachments || []) {
-          if (att.type === 'photo') attachments.push(`photo${att.photo.owner_id}_${att.photo.id}`);
-        }
-        try {
-          await sendMessage(CHATS.doska, `📢 Новый пост в сообществе:\n${text}`, { attachment: attachments.join(',') }, 1);
-        } catch (_) { }
-      }
-
+      console.log(`[Bot] !пост -> group: ${targetGroupId}, attachments: ${attachments.length}`);
+      await callVK('wall.post', { owner_id: `-${targetGroupId}`, message: postText, attachments: attachments.join(','), from_group: 1 }, targetGroupKey);
+      await sendMessage(peerId, `Пост опубликован: ${targetLabel}`, {}, groupKey);
     } catch (e) {
-      console.error('[Bot] handleEvent error:', e.message, e.stack?.split('\n')[1]);
+      console.error(`[Bot] !пост ERROR: ${e.message}`);
+      await sendMessage(peerId, 'Ошибка публикации: ' + e.message, {}, groupKey);
     }
+    return true;
   }
 
-  // ─────────────────────────── LONG POLL ──────────────���────────
-  async function getLongPollServer(groupId, token) {
-    const url = `https://api.vk.com/method/groups.getLongPollServer`;
-    const body = new URLSearchParams({ group_id: groupId, access_token: token, v: VK_API_VERSION });
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() });
-    const data = await res.json();
-    if (data.error) throw new Error(`getLongPollServer: ${data.error.error_msg}`);
-    return data.response;
+  // !приветствие [чат]
+  if (cmd === '!приветствие') {
+    if (!isRs) { await sendMessage(peerId, 'Только РС', {}, groupKey); return true; }
+    if (!reply) { await sendMessage(peerId, 'Ответьте на сообщение с текстом приветствия', {}, groupKey); return true; }
+    const targetChat = parts[1] ? parseInt(parts[1]) : peerId;
+    storage.greetings.set(targetChat, reply.text || '');
+    await sendMessage(peerId, `Приветствие для чата ${targetChat} установлено`, {}, groupKey);
+    return true;
   }
 
-  async function pollGroup(groupId, token, groupKey, label) {
-    console.log(`[Bot][${label}] Получаем Long-Poll сервер... groupId=${groupId}`);
-    let { key, server, ts } = await getLongPollServer(groupId, token);
-    console.log(`[Bot][${label}] Long-poll started, ts=${ts}`);
+  // !закреп
+  if (cmd === '!закреп') {
+    if (!isRs) { await sendMessage(peerId, 'Только РС', {}, groupKey); return true; }
+    if (!reply) { await sendMessage(peerId, 'Ответьте на сообщение дл�� закрепления', {}, groupKey); return true; }
+    try {
+      await callVK('messages.pin', { peer_id: peerId, conversation_message_id: reply.conversation_message_id });
+      await sendMessage(peerId, 'Сообщение закреплено', {}, groupKey);
+    } catch (e) { await sendMessage(peerId, 'Ошибка закрепа: ' + e.message, {}, groupKey); }
+    return true;
+  }
 
-    while (true) {
+  // !кик [@пользователь | id | реплай] [все | чат1,чат2,...] [причина]
+  // Примеры:
+  //   !кик (ответом на сообщение)            — кик из текущего чата
+  //   !кик @id12345                           — кик из текущего чата
+  //   !кик @id12345 все Нарушение правил      — кик из ВСЕХ чатов организации
+  //   !кик @id12345 доставка Флуд             — кик из всех чатов доставки
+  //   !кик @id12345 такси                     — кик из всех чатов та��си
+  if (cmd === '!кик') {
+    if (!isSs) { await sendMessage(peerId, 'Только РС и СС', {}, groupKey); return true; }
+
+    let targetId = null;
+    let argOffset = 1; // индекс следующего аргумента после команды
+    if (reply) {
+      targetId = reply.from_id;
+      argOffset = 1;
+    } else if (parts[1]) {
+      targetId = extractUserId(parts[1]);
+      argOffset = 2;
+    }
+    if (!targetId || targetId <= 0) {
+      await sendMessage(peerId,
+        'Укажите пользователя. Использование:\n!кик (ответом) [все|доставка|такси] [причина]\n!кик @id [все|��оставка|такси] [причина]',
+        {}, groupKey);
+      return true;
+    }
+
+    // Определяем, из каких чатов кикать
+    const scopeArg = (parts[argOffset] || '').toLowerCase();
+    const reasonArg = parts.slice(argOffset + (['все', 'доставка', 'такси'].includes(scopeArg) ? 1 : 0)).join(' ') || 'Нарушение правил';
+
+    let kickChatIds = []; // peer_ids
+    let kickGroupKey = groupKey;
+
+    if (scopeArg === 'все') {
+      // Все 12 чатов
+      kickChatIds = Object.values(CHATS).filter(v => v > 0);
+      kickGroupKey = 1; // главный токен пробуем для каждого
+    } else if (scopeArg === 'доставка') {
+      kickChatIds = [CHATS.dispetcherskaya, CHATS.ss, CHATS.fludilka, CHATS.uchebny].filter(v => v > 0);
+      kickGroupKey = 2;
+    } else if (scopeArg === 'такси') {
+      kickChatIds = [CHATS.taxiDispetcherskaya, CHATS.taxiSs, CHATS.taxiFludilka, CHATS.taxiUchebny].filter(v => v > 0);
+      kickGroupKey = 3;
+    } else {
+      // Только текущий чат
+      kickChatIds = [peerId];
+      kickGroupKey = groupKey;
+    }
+
+    const target = await getUser(targetId, groupKey);
+    const targetName = target ? createUserLink(target) : `id${targetId}`;
+
+    let kickedFrom = [];
+    let errors = [];
+
+    for (const chatPeer of kickChatIds) {
       try {
-        const url = `${server}?act=a_check&key=${key}&ts=${ts}&wait=25`;
-        const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
-        const data = await res.json();
+        // Пробуем через соответствующий токен, если не получается — через groupKey=1
+        let gk = kickGroupKey;
+        if (chatPeer === CHATS.dispetcherskaya || chatPeer === CHATS.ss || chatPeer === CHATS.fludilka || chatPeer === CHATS.uchebny) gk = 2;
+        else if (chatPeer === CHATS.taxiDispetcherskaya || chatPeer === CHATS.taxiSs || chatPeer === CHATS.taxiFludilka || chatPeer === CHATS.taxiUchebny) gk = 3;
+        else gk = 1;
 
-        if (data.failed) {
-          if (data.failed === 1) { ts = data.ts; continue; }
-          const fresh = await getLongPollServer(groupId, token);
-          key = fresh.key; server = fresh.server; ts = fresh.ts;
-          continue;
-        }
-
-        ts = data.ts;
-        for (const update of data.updates || []) {
-          await handleEvent(update, groupKey);
-        }
+        await callVK('messages.removeChatUser', { chat_id: chatPeer - 2000000000, member_id: targetId }, gk);
+        kickedFrom.push(chatPeer);
       } catch (e) {
-        if (e.name === 'TimeoutError') continue;
-        console.error(`[Bot][${label}] Poll error:`, e.message);
-        await new Promise(r => setTimeout(r, 3000));
-        try {
-          const fresh = await getLongPollServer(groupId, token);
-          key = fresh.key; server = fresh.server; ts = fresh.ts;
-        } catch (_) { }
+        // Не участник чата или нет прав — пропускаем тихо, фиксируем только реальные ошибки
+        if (!e.message.includes('not a chat member') && !e.message.includes('User not found')) {
+          errors.push(`${chatPeer}: ${e.message}`);
+        }
       }
     }
+
+    const kickedCount = kickedFrom.length;
+    const scopeLabel = scopeArg === 'все' ? 'всех чатов' : scopeArg === 'доставка' ? 'чатов доставки' : scopeArg === 'такси' ? 'чатов такси' : 'чат��';
+    const resultMsg = kickedCount > 0
+      ? `${targetName} искл��чён из ${kickedCount} ${scopeLabel}. Причина: ${reasonArg}`
+      : `Не удалось исключить ${targetName} (возможно, не ��частник или нет прав)`;
+
+    await sendMessage(peerId, resultMsg, {}, groupKey);
+
+    // Журнал кика в ��ат «Журнал Активности»
+    if (CHATS.zhurnal && kickedCount > 0) {
+      const kicker = await getUser(uid, groupKey);
+      const kickerName = kicker ? createUserLink(kicker) : `id${uid}`;
+      await sendMessage(CHATS.zhurnal,
+        `🔴 Кик: ${targetName} исключён ${kickerName} из ${kickedCount} чата(-ов) (${scopeLabel}).\nПричина: ${reasonArg}\n${formatDateMSK()}`,
+        {}, 1);
+    }
+
+    return true;
   }
 
-  // ─────────────────────────── MINI APP DISPATCH POLLER ────────
-  // TAXI DISABLED — pollPendingTaxiDispatch и sendTaxiOrderToDispatch отключены
-  if (false) { // TAXI_DISPATCH_DISABLED_START
+  // !бан
+  if (cmd === '!бан') {
+    if (!isSs) { await sendMessage(peerId, 'Только РС и СС', {}, groupKey); return true; }
+    let targetId = null;
+    if (reply) targetId = reply.from_id;
+    else if (parts[1]) targetId = extractUserId(parts[1]);
+    if (!targetId) { await sendMessage(peerId, 'Укажите пользователя', {}, groupKey); return true; }
+    const days = parseInt(parts[reply ? 1 : 2]) || 0;
+    const reason = parts.slice(reply ? 2 : 3).join(' ') || 'Нарушение правил';
+    addToBlacklist(targetId, days, reason, uid);
+    const target = await getUser(targetId, groupKey);
+    await sendMessage(peerId, `${target ? createUserLink(target) : targetId} забанен на ${days || 'ПЕРМАНЕНТНО'} д��ей. Причина: ${reason}`, {}, groupKey);
+    return true;
+  }
+
+  // !разбан
+  if (cmd === '!разбан') {
+    if (!isSs) { await sendMessage(peerId, 'Только РС �� СС', {}, groupKey); return true; }
+    let targetId = parts[1] ? extractUserId(parts[1]) : null;
+    if (!targetId) { await sendMessage(peerId, 'Укажите пользователя', {}, groupKey); return true; }
+    const ok = removeFromBlacklist(targetId);
+    await sendMessage(peerId, ok ? `Пользователь ${targetId} разбанен` : 'Пользователь не в б��не', {}, groupKey);
+    return true;
+  }
+
+  // !мут
+  if (cmd === '!мут') {
+    if (!isSs) { await sendMessage(peerId, 'Только РС и СС', {}, groupKey); return true; }
+    let targetId = null;
+    if (reply) targetId = reply.from_id;
+    else if (parts[1]) targetId = extractUserId(parts[1]);
+    if (!targetId) { await sendMessage(peerId, 'Укажите пользователя', {}, groupKey); return true; }
+    const durationStr = reply ? parts[1] : parts[2];
+    const minutes = parseDuration(durationStr || '60 минут') || 60;
+    const reason = parts.slice(reply ? 2 : 3).join(' ') || 'Нарушение правил';
+    addMute(targetId, minutes, reason, uid);
+    const target = await getUser(targetId, groupKey);
+    await sendMessage(peerId, `${target ? createUserLink(target) : targetId} замучен на ${minutes} мин. Причина: ${reason}`, {}, groupKey);
+    return true;
+  }
+
+  // !размут
+  if (cmd === '!размут') {
+    if (!isSs) { await sendMessage(peerId, 'Только РС и СС', {}, groupKey); return true; }
+    let targetId = parts[1] ? extractUserId(parts[1]) : null;
+    if (!targetId) { await sendMessage(peerId, 'Укажите пользователя', {}, groupKey); return true; }
+    const ok = removeMute(targetId);
+    await sendMessage(peerId, ok ? `Мут снят с пользователя ${targetId}` : 'Пользователь не замуч��н', {}, groupKey);
+    return true;
+  }
+
+  // !увед
+  if (cmd === '!увед') {
+    if (!isSs) { await sendMessage(peerId, 'Только РС и СС', {}, groupKey); return true; }
+    const msg = reply ? reply.text : parts.slice(1).join(' ');
+    if (!msg) { await sendMessage(peerId, 'Укажите текст', {}, groupKey); return true; }
+    const chats = Object.values(CHATS).filter(v => v > 0);
+    let sent = 0;
+    for (const chatPeer of chats) {
+      try { await sendMessage(chatPeer, `📢 Объявление:\n${msg}`, {}, groupKey); sent++; } catch (_) { }
+    }
+    await sendMessage(peerId, `Уведомление отправлено в ${sent} чатов`, {}, groupKey);
+    return true;
+  }
+
+  // !диагностика
+  if (cmd === '!диагностика') {
+    const c = CHATS;
+    const checks = [
+      `Группа 1 (Kaskad Group):    ${G1_TOKEN ? '✅' : '❌'} ID=${G1_ID || '—'}`,
+      `Группа 2 (Kaskad Delivery): ${G2_TOKEN ? '✅' : '❌'} ID=${G2_ID || '—'}`,
+      `Группа 3 (Kaskad TAXI):     ${G3_TOKEN ? '✅' : '❌'} ID=${G3_ID || '—'}`,
+      `— Чаты (peer_id) —`,
+      `1.  Доска объявлений:         ${c.doska || '❌ не задан'}`,
+      `2.  Флудилка Delivery:        ${c.fludilka || '❌ не задан'}`,
+      `3.  Флудилка TAXI:            ${c.taxiFludilka || '❌ не задан'}`,
+      `4.  Журнал Активности:        ${c.zhurnal || '❌ не задан'}`,
+      `5.  Диспетчерская Delivery:   ${c.dispetcherskaya || '❌ не задан'}`,
+      `6.  Диспетчерская TAXI:       ${c.taxiDispetcherskaya || '❌ не задан'}`,
+      `7.  Старший состав Delivery:  ${c.ss || '❌ не задан'}`,
+      `8.  Старший состав TAXI:      ${c.taxiSs || '❌ не задан'}`,
+      `9.  Руководство:              ${c.rukovodstvo || '❌ не задан'}`,
+      `10. Спонсорская беседа:       ${c.sponsor || '❌ не задан'}`,
+      `11. Учебный центр Delivery:   ${c.uchebny || '❌ не задан'}`,
+      `12. Учебный центр TAXI:       ${c.taxiUchebny || '❌ не задан'}`,
+      `Онлайн в журнале: ${storage.online.size} чел.`,
+      `Активных заказов: ${storage.activeOrders.size} дост. | ${storage.activeTaxi.size} такси`,
+    ];
+    await sendMessage(peerId, `Диагностика:\n${checks.join('\n')}`, {}, groupKey);
+    return true;
+  }
+
+  return false;
+}
+
+// ─────────────────────────── CALLBACK HANDLER ─────────────────
+async function handleCallback(event, groupKey) {
+  // Ensure uid is always a number for consistent Map key lookup
+  const uid = parseInt(event.user_id || event.from_id);
+  const peerId = event.peer_id;
+  let payload;
+  try { payload = typeof event.payload === 'string' ? JSON.parse(event.payload) : event.payload; }
+  catch (_) { payload = {}; }
+
+  const action = payload.action;
+  const chatLabel = peerId > 2000000000 ? `chat_id: ${peerIdToChatId(peerId)}` : `dm: ${peerId}`;
+  console.log(`[Bot][G${groupKey}] callback <- peer_id: ${peerId} (${chatLabel}), user: ${uid}, action: ${action}`);
+
+  // Accept order
+  if (action === 'accept_order') {
+    const orderId = payload.orderId;
+    const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
+    if (!order || order.status !== 'pending') { return; }
+
+    // Check online status - use parseInt to ensure consistent Map key
+    const onlineInfo = storage.online.get(uid);
+    console.log(`[Bot] accept_order: uid=${uid}, onlineInfo=`, onlineInfo ? JSON.stringify(onlineInfo) : 'null', ', online keys:', [...storage.online.keys()]);
+    if (!onlineInfo || !onlineInfo.online) {
+      await sendMessage(uid, 'Вы не в онлайне. Напишите !онлайн в журнале активности.', {}, 1);
+      return;
+    }
+
+    await handleCourierAcceptOrder(event, orderId);
+    return;
+  }
+
+  // Toggle purchase item
+  if (action === 'toggle_buy') {
+    const { orderId, itemName } = payload;
+    const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
+    if (!order || !order.purchaseItems) return;
+    const item = order.purchaseItems.find(it => it.name === itemName);
+    if (item) item.bought = !item.bought;
+
+    // Rebuild keyboard
+    const buttons = order.purchaseItems.map(it => ([{
+      label: `${it.bought ? '[✓]' : '[ ]'} ${it.name} x${it.qty}`,
+      color: it.bought ? 'positive' : 'secondary',
+      payload: { action: 'toggle_buy', orderId, itemName: it.name },
+    }]));
+    const allBought = order.purchaseItems.every(it => it.bought);
+    if (!allBought) {
+      buttons.push([{ label: 'Всё куплено / Готовлю', color: 'positive', payload: { action: 'cooking_done', orderId } }]);
+    } else {
+      buttons.push([{ label: 'Готово! Еду к клиенту', color: 'positive', payload: { action: 'start_deliver', orderId } }]);
+    }
+
+    await editMessage(uid, order.purchaseMsgId, `Закупки (заказ ${getOrderNumDisplay(order, orderId)}):`, { keyboard: kb(buttons) }, 1);
+    return;
+  }
+
+  // Cooking done
+  if (action === 'cooking_done') {
+    const { orderId } = payload;
+    const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
+    if (!order) return;
+    order.status = 'accepted';
+    // Update dispatch message
+    const ids = storage.orderMsgIds.get(orderId);
+    if (ids) {
+      await editMessage(ids.chatId, ids.dispatchMsgId, `Заказ ${getOrderNumDisplay(order, orderId)} — готовитс�� (курьер: ${order.courierNick})`, {
+        keyboard: kb([[{ label: 'Статус: Готовится', color: 'secondary', payload: {} }]])
+      }, 1);
+    }
+    // Notify client
+    await sendMessage(order.clientId, 'Ваш заказ готовится! Курьер скоро выедет.', {}, 2);
+    return;
+  }
+
+  // Start delivery (delivery only — for taxi the driver uses "Прибыл" directly)
+  if (action === 'start_deliver') {
+    const { orderId } = payload;
+    const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
+    if (!order) return;
+    order.status = 'delivering';
+    const gKey = order.type === 'taxi' ? 3 : 2;
+    // Remind courier
+    await sendMessage(uid,
+      `Напоминание:\nКлиент: ${order.nick}\nАдрес: ${order.address || ((order.from?.name || '') + ' → ' + (order.to?.name || '')) || '—'}\nСумма: ${order.total || order.finalPrice}р.`,
+      {}, 1);
+    // Notify client
+    await sendMessage(order.clientId,
+      `Заказ готов! ${order.type === 'taxi' ? 'Водитель' : 'Курьер'} ${order.courierNick} едет к вам.`,
+      { keyboard: msgKb([[{ label: 'Статус заказа' }], [{ label: 'Ссылка на курье��а' }]]) }, gKey);
+    return;
+  }
+
+  // Courier arrived
+  if (action === 'courier_arrived') {
+    const { orderId } = payload;
+    const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
+    if (!order) return;
+    order.status = 'arrived';
+    await sendMessage(order.clientId, 'Курьер на месте!', {}, order.type === 'taxi' ? 3 : 2);
+    // Replace current message with finish button (inline)
+    await sendMessage(uid, `Заказ ${getOrderNumDisplay(order, orderId)} — вы на месте у клиента. Нажмите «Доставлен» после передачи:`,
+      { keyboard: kb([[{ label: 'Доставлен', color: 'positive', payload: { action: 'finish_order', orderId } }]]) }, 1);
+    return;
+  }
+
+  // Finish order
+  if (action === 'finish_order') {
+    const { orderId } = payload;
+    const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
+    if (!order) return;
+    if (!['arrived', 'delivering'].includes(order.status)) {
+      await sendMessage(uid, `Нельзя завершить заказ со статусом «${order.status}». Сначала нажмите «Прибыл к клиенту».`, {}, 1);
+      return;
+    }
+    order.status = 'done';
+    order.finishedAt = Date.now();
+
+    // Update stats
+    const staff = readJSON(STAFF_FILE, {});
+    if (order.courierId && staff[order.courierId]) {
+      if (order.type === 'taxi') staff[order.courierId].stats.taxiOrders = (staff[order.courierId].stats.taxiOrders || 0) + 1;
+      else staff[order.courierId].stats.deliveryOrders = (staff[order.courierId].stats.deliveryOrders || 0) + 1;
+      writeJSON(STAFF_FILE, staff);
+    }
+
+    // Persist
+    const ords = readJSON(ORDERS_FILE, { delivery: [], taxi: [] });
+    const list = order.type === 'taxi' ? ords.taxi : ords.delivery;
+    const idx = list.findIndex(o => o.id === orderId);
+    if (idx !== -1) list[idx] = order;
+    writeJSON(ORDERS_FILE, ords);
+
+    storage.activeOrders.delete(orderId);
+    storage.activeTaxi.delete(orderId);
+
+    // Notify client
+    const reviewLink = `vk.com/wall-${G1_ID}?w=wall-${G1_ID}_1`; // placeholder
+    await sendMessage(order.clientId,
+      `Заказ завершён! Спасибо!\nОставьте отзыв или жалобу: ${reviewLink}`,
+      { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) },
+      order.type === 'taxi' ? 3 : 2);
+
+    await sendMessage(uid, `Заказ ${getOrderNumDisplay(order, orderId)} завершён. Молодец!`, {}, 1);
+    return;
+  }
+
+  // Taxi: paid waiting
+  if (action === 'taxi_paid_waiting') {
+    const { orderId } = payload;
+    const order = storage.activeTaxi.get(orderId);
+    if (!order) return;
+    order.paidWaiting = true;
+    await sendMessage(order.clientId, 'Водитель начал платное ожидание.', {}, 3);
+    await sendMessage(uid, 'Платное ожидание включено.', {}, 1);
+    return;
+  }
+
+  // Report processed
+  if (action === 'report_processed') {
+    await sendMessage(peerId, `Отчёт обработан ✅`, {}, 1);
+    return;
+  }
+}
+
+// ─────────────────────────── NEW-MEMBER GREETING ──────────────
+async function handleNewMember(event, groupKey) {
+  const peerId = event.peer_id;
+  const newMembers = event.action?.member_ids || [event.action?.member_id].filter(Boolean);
+
+  // Если это журнал активности — сразу показываем кнопки смены
+  const isJournal = peerId === CHATS.zhurnal;
+
+  const greeting = storage.greetings.get(peerId);
+  for (const mid of newMembers) {
+    if (mid < 0) continue;
+    const user = await getUser(mid, groupKey);
+    const name = user ? `${user.first_name} ${user.last_name}` : `id${mid}`;
+    if (greeting) {
+      await sendMessage(peerId, greeting.replace('{name}', name).replace('{id}', mid),
+        isJournal ? { keyboard: journalKeyboard() } : {}, groupKey);
+    } else if (isJournal) {
+      await sendMessage(peerId,
+        `Приве��, ${name}! Нажми !онлайн чтобы начать смену.`,
+        { keyboard: journalKeyboard() }, groupKey);
+    }
+  }
+}
+
+// ─────────────────────────── EVENT ROUTER ────────────────────
+async function handleEvent(event, groupKey) {
+  try {
+    const type = event.type;
+    const obj = event.object;
+
+    if (type === 'message_new') {
+      const msg = obj.message || obj;
+      const peerId = msg.peer_id;
+      const uid = msg.from_id;
+      const text = (msg.text || '').trim();
+
+      // Log every incoming message with chat ID
+      const chatLabel = peerId > 2000000000 ? `chat_id: ${peerIdToChatId(peerId)}` : `dm_user: ${peerId}`;
+      console.log(`[Bot][G${groupKey}] message_new <- peer_id: ${peerId} (${chatLabel}), from: ${uid}, text: "${text.slice(0, 50)}"`);
+
+      // Ignore bot messages
+      if (uid <= 0) return;
+
+      // Blacklist check
+      const banInfo = isBlacklisted(uid);
+      if (banInfo && peerId > 2000000000) return; // silently ignore banned users in chats
+
+      // Журнал активно��ти — только этот чат обрабатывает !онлайн/!афк/!вышел/!стата
+      // !стата также доступна во всех чатах через handleChatCommand
+      if (peerId === CHATS.zhurnal) {
+        await handleJournalMessage(msg, groupKey); // включает !стата
+        return;
+      }
+
+      // Chat commands (includes !стата, !диагностика, moderation etc.)
+      if (peerId > 2000000000) {
+        await handleChatCommand(msg, groupKey);
+        return;
+      }
+
+      // DMs — peer_id equals the user's vk id for private messages
+      if (peerId > 0 && peerId === uid) {
+        if (groupKey === 2) {
+          await handleDeliveryDM(msg);
+        } else if (groupKey === 3) {
+          // TAXI DISABLED — handleTaxiDM отключён
+          // await handleTaxiDM(msg);
+        } else if (groupKey === 1) {
+          // Handle vehicle add steps first
+          const sess = storage.staffSessions.get(uid) || { step: null };
+          const vehicleSteps = [
+            'staff_veh_custom_name', 'staff_veh_custom_photo', 'staff_veh_custom_brandcolor',
+            'staff_org_veh_select', 'staff_veh_delete',
+          ];
+          const vehicleTriggers = ['Добавить личное авто', 'Взять авто организации', 'Удалить авто'];
+          if (vehicleSteps.includes(sess.step) || vehicleTriggers.includes(text)) {
+            const handled = await handleStaffVehicleAdd(uid, peerId, text, msg);
+            if (handled) return;
+          }
+          // TAXI DISABLED — handleTaxiPointAdmin отключён
+          // const role = await getUserRole(uid);
+          // if (role === 'rs' || role === 'ss') {
+          //   const handled2 = await handleTaxiPointAdmin(uid, peerId, text, msg);
+          //   if (handled2) return;
+          // }
+          await handleGroup1DM(msg);
+        }
+      }
+    }
+
+    if (type === 'message_event') {
+      const cbPeerId = obj.peer_id;
+      const cbLabel = cbPeerId > 2000000000 ? `chat_id: ${peerIdToChatId(cbPeerId)}` : `dm: ${cbPeerId}`;
+      console.log(`[Bot][G${groupKey}] message_event <- peer_id: ${cbPeerId} (${cbLabel}), user: ${obj.user_id}`);
+      await handleCallback(obj, groupKey);
+    }
+
+    if (type === 'message_new') {
+      const msg = obj.message || obj;
+      if (msg.action && (msg.action.type === 'chat_invite_user' || msg.action.type === 'chat_invite_user_by_link')) {
+        await handleNewMember(msg, groupKey);
+      }
+    }
+
+    // Group post in group 1 → repost to doska
+    if (type === 'wall_post_new' && groupKey === 1) {
+      const post = obj;
+      if (post.marked_as_ads || post.postponed) return;
+      const text = post.text || '';
+      const attachments = [];
+      for (const att of post.attachments || []) {
+        if (att.type === 'photo') attachments.push(`photo${att.photo.owner_id}_${att.photo.id}`);
+      }
+      try {
+        await sendMessage(CHATS.doska, `📢 Новый пост в сообществе:\n${text}`, { attachment: attachments.join(',') }, 1);
+      } catch (_) { }
+    }
+
+  } catch (e) {
+    console.error('[Bot] handleEvent error:', e.message, e.stack?.split('\n')[1]);
+  }
+}
+
+// ─────────────────────────── LONG POLL ──────────────���────────
+async function getLongPollServer(groupId, token) {
+  const url = `https://api.vk.com/method/groups.getLongPollServer`;
+  const body = new URLSearchParams({ group_id: groupId, access_token: token, v: VK_API_VERSION });
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() });
+  const data = await res.json();
+  if (data.error) throw new Error(`getLongPollServer: ${data.error.error_msg}`);
+  return data.response;
+}
+
+async function pollGroup(groupId, token, groupKey, label) {
+  console.log(`[Bot][${label}] Получаем Long-Poll сервер... groupId=${groupId}`);
+  let { key, server, ts } = await getLongPollServer(groupId, token);
+  console.log(`[Bot][${label}] Long-poll started, ts=${ts}`);
+
+  while (true) {
+    try {
+      const url = `${server}?act=a_check&key=${key}&ts=${ts}&wait=25`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
+      const data = await res.json();
+
+      if (data.failed) {
+        if (data.failed === 1) { ts = data.ts; continue; }
+        const fresh = await getLongPollServer(groupId, token);
+        key = fresh.key; server = fresh.server; ts = fresh.ts;
+        continue;
+      }
+
+      ts = data.ts;
+      for (const update of data.updates || []) {
+        await handleEvent(update, groupKey);
+      }
+    } catch (e) {
+      if (e.name === 'TimeoutError') continue;
+      console.error(`[Bot][${label}] Poll error:`, e.message);
+      await new Promise(r => setTimeout(r, 3000));
+      try {
+        const fresh = await getLongPollServer(groupId, token);
+        key = fresh.key; server = fresh.server; ts = fresh.ts;
+      } catch (_) { }
+    }
+  }
+}
+
+// ─────────────────────────── MINI APP DISPATCH POLLER ────────
+// TAXI DISABLED — pollPendingTaxiDispatch и sendTaxiOrderToDispatch отключены
+if (false) { // TAXI_DISPATCH_DISABLED_START
   const TAXI_PENDING_DISPATCH_FILE = path.join(DATA_DIR, 'taxi_pending_dispatch.json');
 
   async function pollPendingTaxiDispatch() {
@@ -3876,44 +3850,44 @@ function calculateTaxiPrice(from, to) {
     if (!msgId) msgId = await sendMessage(chatId, text, { keyboard, attachment: attachment || undefined }, 3);
     if (msgId) storage.orderMsgIds.set(order.id, { dispatchMsgId: msgId, chatId });
   }
-  } // TAXI_DISPATCH_DISABLED_END
+} // TAXI_DISPATCH_DISABLED_END
 
-  // ─────────────────────────── ENTRYPOINT ──────────────────────
-  async function main() {
-    console.log('[Bot] Запуск...');
-    console.log('[Bot] Инициализация планировщика отчётов...');
+// ─────────────────────────── ENTRYPOINT ──────────────────────
+async function main() {
+  console.log('[Bot] Запуск...');
+  console.log('[Bot] Инициализация планировщика отчётов...');
 
-    scheduleReports();
+  scheduleReports();
 
-    const pollers = [
-      pollGroup(G1_ID, G1_TOKEN, 1, 'Группа1'),
-    ];
+  const pollers = [
+    pollGroup(G1_ID, G1_TOKEN, 1, 'Группа1'),
+  ];
 
-    if (G2_TOKEN && G2_ID) {
-      console.log('[Bot] Добавляем поллер Группа2...');
-      pollers.push(pollGroup(G2_ID, G2_TOKEN, 2, 'Группа2'));
-    } else {
-      console.warn('[Bot] Группа 2 не настроена (VK_GROUP2_TOKEN / VK_GROUP2_ID)');
-    }
-
-    // TAXI DISABLED — Group 3 (Такси) поллер отключён
-    // if (G3_TOKEN && G3_ID && G3_TOKEN !== 'REPLACE_WITH_GROUP3_TOKEN') {
-    //   console.log('[Bot] Добавляем поллер Группа3...');
-    //   pollers.push(pollGroup(G3_ID, G3_TOKEN, 3, 'Группа3'));
-    // } else {
-    //   console.warn('[Bot] Группа 3 не настроена (VK_GROUP3_TOKEN / VK_GROUP3_ID)');
-    // }
-
-    // TAXI DISABLED — поллер очереди такси-диспетчерской отключён
-    // pollers.push(pollPendingTaxiDispatch());
-    console.log(`[Bot] Всего поллеров запущено: ${pollers.length}`);
-
-    await Promise.all(pollers);
+  if (G2_TOKEN && G2_ID) {
+    console.log('[Bot] Добавляем поллер Группа2...');
+    pollers.push(pollGroup(G2_ID, G2_TOKEN, 2, 'Группа2'));
+  } else {
+    console.warn('[Bot] Группа 2 не настроена (VK_GROUP2_TOKEN / VK_GROUP2_ID)');
   }
 
-  main()
-    .catch(e => {
-      console.error('[Bot] Fatal error in main():', e.message);
-      console.error(e.stack);
-      process.exit(1);
-    });
+  // TAXI DISABLED — Group 3 (Такси) поллер отключён
+  // if (G3_TOKEN && G3_ID && G3_TOKEN !== 'REPLACE_WITH_GROUP3_TOKEN') {
+  //   console.log('[Bot] Добавляем поллер Группа3...');
+  //   pollers.push(pollGroup(G3_ID, G3_TOKEN, 3, 'Группа3'));
+  // } else {
+  //   console.warn('[Bot] Группа 3 не настроена (VK_GROUP3_TOKEN / VK_GROUP3_ID)');
+  // }
+
+  // TAXI DISABLED — поллер очереди такси-диспетчерской отключён
+  // pollers.push(pollPendingTaxiDispatch());
+  console.log(`[Bot] Всего поллеров запущено: ${pollers.length}`);
+
+  await Promise.all(pollers);
+}
+
+main()
+  .catch(e => {
+    console.error('[Bot] Fatal error in main():', e.message);
+    console.error(e.stack);
+    process.exit(1);
+  });
