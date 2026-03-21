@@ -541,7 +541,7 @@ async function handleDeliveryDM(event) {
       {
         keyboard: msgKb([
           [{ label: 'Каталог', color: 'secondary' }, { label: 'Заказать', color: 'positive' }],
-          [{ label: 'Трудоус����ройство', color: 'secondary' }, { label: 'Частые вопросы', color: 'secondary' }],
+          [{ label: 'Трудоус������ройство', color: 'secondary' }, { label: 'Частые вопросы', color: 'secondary' }],
         ])
       }, 2);
     return;
@@ -708,7 +708,7 @@ async function handleDeliveryDM(event) {
     }
     if (text === 'Оформить заказ') {
       if (!sess.data.basket || sess.data.basket.length === 0) {
-        await sendMessage(peerId, 'Корзина пуст��. ����обавьте товары.', {}, 2);
+        await sendMessage(peerId, 'Корзина п��ст��. ����обавьте товары.', {}, 2);
         return;
       }
       sess.step = DEL_STEP.CHECKOUT_NICK;
@@ -1330,7 +1330,7 @@ async function handleGroup1DM(event) {
       {
         keyboard: msgKb([
           [{ label: 'Добавить промокод доставки', color: 'positive' }],
-          [{ label: 'Добавить промокод такси', color: 'positive' }],
+          [{ label: 'Добавить промокод так��и', color: 'positive' }],
           [{ label: 'Удалить промокод', color: 'negative' }],
           [{ label: 'Главное меню', color: 'secondary' }],
         ])
@@ -1630,7 +1630,7 @@ async function handleAdminCatalogueSession(uid, peerId, text, event) {
   if (step === 'admin_item_temp') {
     sess.data.itemTemp = text === 'Пропустить' ? '' : text;
     sess.step = 'admin_item_subitems'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Введите просты�� товары из которых состоит (формат: «Яйцо x2, Молоко x1») или «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить' }]]) }, 1);
+    await sendMessage(peerId, 'Введите п��осты�� товары из которых состоит (формат: «Яйцо x2, Молоко x1») или «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить' }]]) }, 1);
     return true;
   }
   if (step === 'admin_item_subitems') {
@@ -1962,7 +1962,7 @@ async function handleAdminTaxiPoints(uid, peerId, text, event) {
     const cat = tp.categories.find(c => c.name === text);
     if (!cat) return false;
     sess.data.tpCatId = cat.id; sess.step = 'tp_add_point_name'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, `Категория: ${text}\nВведите название точки (адрес/место):`, { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
+    await sendMessage(peerId, `Категор��я: ${text}\nВведите название точки (адрес/место):`, { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 1);
     return true;
   }
   if (step === 'tp_add_point_name') {
@@ -2144,14 +2144,6 @@ async function sendPointSelect(peerId, groupKey, catName, label, excludeId = nul
     `${label}\nКатегория: ${catName}\nВыберите точку:`,
     { keyboard: msgKb(rows) }, groupKey);
   return true;
-}
-function writeTaxiPicks(data) {
-  writeJSON(TAXI_PICKS_FILE, data);
-}
-function clearTaxiPick(token) {
-  const picks = readTaxiPicks();
-  delete picks[token];
-  writeTaxiPicks(picks);
 }
 
 /**
@@ -2359,7 +2351,7 @@ async function handleTaxiDM(event) {
     return;
   }
 
-  // ── To: point ──────────────────────────────────��───────────
+  // ── To: point ────────────────────────���─────────��───────────
   if (sess.step === TAXI_STEP.ORDER_TO_POINT) {
     if (text === 'Отмена') { sess.step = TAXI_STEP.MAIN; sess.data = {}; storage.clientSessions.set('taxi_' + uid, sess); await sendMessage(peerId, 'Отменено.', { keyboard: mainKb }, 3); return; }
     if (text === '← Назад') {
@@ -2876,7 +2868,7 @@ function calculateTaxiPrice(from, to) {
     return `${m}м.`;
   }
 
-  // ─────────────────────────── DAILY/WEEKLY REPORTS ────────────────
+  // ────────────────────��────── DAILY/WEEKLY REPORTS ────────────────
   async function sendDailyReport() {
     const ords = readJSON(ORDERS_FILE, { delivery: [], taxi: [] });
     const staff = readJSON(STAFF_FILE, {});
@@ -3235,7 +3227,7 @@ function calculateTaxiPrice(from, to) {
       const kickedCount = kickedFrom.length;
       const scopeLabel = scopeArg === 'все' ? 'всех чатов' : scopeArg === 'доставка' ? 'чатов доставки' : scopeArg === 'такси' ? 'чатов такси' : 'чат��';
       const resultMsg = kickedCount > 0
-        ? `${targetName} исключён из ${kickedCount} ${scopeLabel}. Причина: ${reasonArg}`
+        ? `${targetName} искл��чён из ${kickedCount} ${scopeLabel}. Причина: ${reasonArg}`
         : `Не удалось исключить ${targetName} (возможно, не участник или нет прав)`;
 
       await sendMessage(peerId, resultMsg, {}, groupKey);
