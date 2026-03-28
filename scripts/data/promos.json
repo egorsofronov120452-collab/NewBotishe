@@ -1,0 +1,12 @@
+{
+  "delivery": [
+    {
+      "id": "mmzxpcy8erce",
+      "code": "FARM2026",
+      "type": "free_delivery",
+      "active": true,
+      "createdAt": 1774073748176
+    }
+  ],
+  "taxi": []
+}

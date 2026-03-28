@@ -1,0 +1,32 @@
+{
+  "700970214": {
+    "uid": 700970214,
+    "nick": "Egoriy_Bobryshev",
+    "bank": "542928",
+    "role": "rs",
+    "groups": [],
+    "vehicles": [
+      {
+        "id": "mmzvz9uaman6",
+        "name": "BMW M5 F90",
+        "brandColor": true,
+        "photoId": "photo700970214_457242372",
+        "personal": true
+      },
+      {
+        "id": "mmzw6qy5zccg",
+        "name": "Toyota Camry",
+        "brandColor": false,
+        "photoId": "photo700970214_457242373",
+        "personal": true
+      }
+    ],
+    "orgVehicles": [],
+    "stats": {
+      "deliveryOrders": 2,
+      "taxiOrders": 0
+    },
+    "createdAt": 1773161198655
+  },
+  "profiles": {}
+}
