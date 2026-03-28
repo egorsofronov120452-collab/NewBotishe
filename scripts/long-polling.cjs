@@ -877,25 +877,31 @@ async function handleDeliveryDM(event) {
 
   if (sess.step === DEL_STEP.CHECKOUT_ADDR) {
     if (text === 'Отмена') { sess.step = DEL_STEP.BASKET; await showBasket(peerId, uid, sess, 2); return; }
-    // Accept photo as location (местоположение на фото)
-    const addrPhoto = ((event && event.attachments) || []).find(a => a.type === 'photo');
-    if (addrPhoto) {
-      const photoId = `photo${addrPhoto.photo.owner_id}_${addrPhoto.photo.id}`;
-      sess.data.address = 'Местоположение на фото';
-      sess.data.addressPhotoId = photoId;
-    } else {
-      if (!text) return; // no text and no photo — ignore
-      sess.data.address = text;
-      sess.data.addressPhotoId = null;
-    }
+    if (!text) return;
+    sess.data.address = text;
     sess.step = DEL_STEP.CHECKOUT_CONF;
     const summary = `Проверьте данные заказа:\n\nНикнейм: ${sess.data.nick}\nМесто: ${sess.data.address}\n\n${buildBasketText(sess.data.basket)}\n\nВсё верно?`;
-    await sendMessage(peerId, summary, { keyboard: msgKb([[{ label: 'Верно', color: 'positive' }, { label: 'Изменить', color: 'secondary' }]]) }, 2);
+    await sendMessage(peerId, summary, { keyboard: msgKb([[{ label: 'Верно', color: 'positive' }, { label: 'Изменить адрес', color: 'secondary' }, { label: 'Изменить ник', color: 'secondary' }], [{ label: 'Изменить корзину', color: 'secondary' }]]) }, 2);
     return;
   }
 
   if (sess.step === DEL_STEP.CHECKOUT_CONF) {
-    if (text === 'Изменить') { sess.step = DEL_STEP.CHECKOUT_NICK; await sendMessage(peerId, 'Введите никнейм:', {}, 2); return; }
+    if (text === 'Изменить ник') {
+      sess.step = DEL_STEP.CHECKOUT_NICK;
+      await sendMessage(peerId, 'Введите новый никнейм:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 2);
+      return;
+    }
+    if (text === 'Изменить адрес') {
+      sess.step = DEL_STEP.CHECKOUT_ADDR;
+      await sendMessage(peerId, 'Введите новое место доставки:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 2);
+      return;
+    }
+    if (text === 'Изменить корзину') {
+      // Go back to basket view so user can add/remove items
+      sess.step = DEL_STEP.BASKET;
+      await showBasket(peerId, uid, sess, 2);
+      return;
+    }
     if (text === 'Верно') {
       sess.step = DEL_STEP.PROMO;
       await sendMessage(peerId, 'Есть промокод? Введите его или нажмите «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить', color: 'secondary' }]]) }, 2);
@@ -1011,7 +1017,7 @@ async function handleDeliveryDM(event) {
     }
     if (text === 'Отменить заказ') {
       const order = storage.activeOrders.get(sess.data.orderId);
-      if (!order) { await sendMessage(peerId, 'Заказ не найден или уже завершён.', {}, 2); return; }
+      if (!order) { await sendMessage(peerId, 'Заказ не най��ен или уже завершён.', {}, 2); return; }
       if (order.status !== 'pending') {
         await sendMessage(peerId, 'Отменить можно только заказ, который ещё не принят курьером.', {}, 2);
         return;
@@ -1050,7 +1056,7 @@ async function createAndDispatchOrder(peerId, uid, sess, promoResult, slots) {
     total: basketTotal(sess.data.basket) - (promoResult?.discount || 0),
     costTotal: costTotal,
     promo: promoResult ? promoResult.promo?.code : null,
-    promoDesc: promoResult ? promoResult.msg : null,
+    promoDiscount: promoResult?.discount || 0,
     status: 'pending',
     createdAt: Date.now(),
     isBig: isBig,
@@ -1142,7 +1148,8 @@ async function sendOrderToDispatch(order) {
   // @all в начале сообщения (упоминание всех участников чата)
   const atAll = '@all\n';
 
-  const text = `${atAll}Новый заказ ${orderNumDisplay}${bigLabel}\n\nНикнейм: ${order.nick}\nМесто: ${order.address}${schedLine}\nЗаказ:\n${lines.join('\n')}\nИтог: ${total}р.${costLine}${order.promoDesc ? '\n' + order.promoDesc : ''}`;
+  const promoLine = order.promo ? `\nПромокод: ${order.promo}${order.promoDiscount ? ` — скидка ${order.promoDiscount}р.` : ''}` : '';
+  const text = `${atAll}Новый заказ ${orderNumDisplay}${bigLabel}\n\nНикнейм: ${order.nick}\nМесто: ${order.address}${schedLine}\nЗаказ:\n${lines.join('\n')}\nИтог: ${total}р.${costLine}${promoLine}`;
 
   // Крупный заказ идёт в беседу Старшего Состава (без кнопок — ведётся вручную),
   // обычный — в Диспетчерскую с кнопкой «Принять заказ»
@@ -1167,7 +1174,6 @@ async function sendOrderToDispatch(order) {
 
   const dispatchParams = {};
   if (inlineKb) dispatchParams.keyboard = inlineKb;
-  if (order.addressPhotoId) dispatchParams.attachment = order.addressPhotoId;
 
   // Clear previous inline message for this dispatch chat so old "Принять заказ" buttons disappear
   if (inlineKb) {
@@ -1326,6 +1332,7 @@ async function buildPurchaseScreen(uid, order) {
     payload: { action: 'toggle_buy', orderId: order.id, itemName: it.name },
   }]));
   // "Всё куплено" shown only when not all are bought yet (auto-proceeds when all checked)
+  buttons.push([{ label: 'Ссылка на клиента', color: 'secondary', payload: { action: 'get_client_link', orderId: order.id } }]);
   buttons.push([{ label: 'Отменить заказ', color: 'negative', payload: { action: 'courier_cancel_order', orderId: order.id } }]);
 
   // Clear any previous inline message for this courier before sending purchase screen
@@ -1422,6 +1429,19 @@ async function handleGroup1DM(event) {
       { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, gKey);
     storage.staffSessions.delete(uid);
     await sendMessage(peerId, `Заказ ${getOrderNumDisplay(order, orderId)} отменён.`, {}, 1);
+    return;
+  }
+
+  // ── Courier: request client VK link (no approval needed) ─────
+  if (text === 'Ссылка на клиента') {
+    // Find the active order belonging to this courier
+    const courierOrder = [...storage.activeOrders.values(), ...storage.activeTaxi.values()]
+      .find(o => o.courierId === uid && !['done', 'cancelled'].includes(o.status));
+    if (!courierOrder) {
+      await sendMessage(peerId, 'У вас нет активного заказа.', {}, 1);
+    } else {
+      await sendMessage(peerId, `Ссылка на клиента: vk.me/id${courierOrder.clientId}`, {}, 1);
+    }
     return;
   }
 
@@ -1987,7 +2007,7 @@ async function handleAdminCatalogueSession(uid, peerId, text, event) {
   }
   if (step === 'admin_item_cost') {
     sess.data.itemCost = parseInt(text) || 0; sess.step = 'admin_item_temp'; storage.adminSessions.set(uid, sess);
-    await sendMessage(peerId, 'Температур�� / тип (например «80°с») или «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить' }]]) }, 1);
+    await sendMessage(peerId, 'Температур���� / тип (например «80°с») или «Пропустить»:', { keyboard: msgKb([[{ label: 'Пропустить' }]]) }, 1);
     return true;
   }
   if (step === 'admin_item_temp') {
@@ -2650,7 +2670,7 @@ if (false) { // TAXI_DISABLED_START
     }
     if (text === 'Час��ые вопросы') {
       await sendMessage(peerId,
-        'FAQ такси:\n\n— Как рассчитывается цена?\nПо расстоянию меж��у точками на карте с учётом часа пик (18–22 МСК ×1.3).\n\n— Можно добавить попутчика?\nДа, до 2 попутчиков.\n\n— Комиссия за оплату?\nНаличные — 0%, счёт телефона — 7%, банковский счёт — 5%.',
+        'FAQ такси:\n\n— Как рассчитывается цена?\nПо расстоянию м��ж��у точками на карте с учётом часа пик (18–22 МСК ×1.3).\n\n— Можно добавить попутчика?\nДа, до 2 попутчиков.\n\n— Комиссия за оплату?\nНаличные — 0%, счёт телефона — 7%, банковский счёт — 5%.',
         { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 3);
       return;
     }
@@ -3540,7 +3560,7 @@ async function handleChatCommand(event, groupKey) {
     if (!reply) { await sendMessage(peerId, 'Ответьте на сообщение дл�� закрепления', {}, groupKey); return true; }
     try {
       await callVK('messages.pin', { peer_id: peerId, conversation_message_id: reply.conversation_message_id });
-      await sendMessage(peerId, 'Сообщение закреплено', {}, groupKey);
+      await sendMessage(peerId, 'Сообщен��е закреплено', {}, groupKey);
     } catch (e) { await sendMessage(peerId, 'Ошибка закрепа: ' + e.message, {}, groupKey); }
     return true;
   }
@@ -3775,13 +3795,13 @@ async function handleCallback(event, groupKey) {
     const allBought = order.purchaseItems.every(it => it.bought);
 
     if (allBought) {
-      // Auto-proceed: all items bought → cooking_done automatically
-      order.status = 'accepted';
+      // All items bought — update dispatch, show "Еду к клиенту" button
+      order.status = 'ready';
       const ids = storage.orderMsgIds.get(orderId);
       if (ids) {
         await editMessage(ids.chatId, ids.dispatchMsgId,
-          `Заказ ${getOrderNumDisplay(order, orderId)} — готовится (курьер: ${order.courierNick})`,
-          { keyboard: kb([[{ label: 'Статус: Готовится', color: 'secondary', payload: {} }]]) }, 1);
+          `Заказ ${getOrderNumDisplay(order, orderId)} — закуплено, курьер выезжает (курьер: ${order.courierNick})`,
+          { keyboard: kb([[{ label: 'Статус: Закуплено', color: 'secondary', payload: {} }]]) }, 1);
       }
       // Update purchase screen to show all checked + "Еду к клиенту"
       const doneButtons = order.purchaseItems.map(it => ([{
@@ -3791,7 +3811,6 @@ async function handleCallback(event, groupKey) {
       }]));
       doneButtons.push([{ label: 'Готово! Еду к клиенту', color: 'positive', payload: { action: 'start_deliver', orderId } }]);
       await editMessage(uid, order.purchaseMsgId, `Закупки (заказ ${getOrderNumDisplay(order, orderId)}) — всё куплено!`, { keyboard: kb(doneButtons) }, 1);
-      await sendMessage(order.clientId, 'Ваш заказ готовится! Курьер скоро выедет.', {}, 2);
       return;
     }
 
@@ -3804,6 +3823,15 @@ async function handleCallback(event, groupKey) {
     buttons.push([{ label: 'Отменить заказ', color: 'negative', payload: { action: 'courier_cancel_order', orderId } }]);
 
     await editMessage(uid, order.purchaseMsgId, `Закупки (заказ ${getOrderNumDisplay(order, orderId)}):`, { keyboard: kb(buttons) }, 1);
+    return;
+  }
+
+  // Courier: get client link directly (no approval)
+  if (action === 'get_client_link') {
+    const { orderId } = payload;
+    const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
+    if (!order) { await sendMessage(uid, 'Заказ не найден.', {}, 1); return; }
+    await sendMessage(uid, `Ссылка на клиента: vk.me/id${order.clientId}`, {}, 1);
     return;
   }
 
@@ -3822,6 +3850,128 @@ async function handleCallback(event, groupKey) {
     const clientSess = storage.clientSessions.get(order.clientId);
     if (clientSess) { clientSess.step = DEL_STEP.MAIN; clientSess.data = {}; }
     await sendMessage(uid, `Заказ ${getOrderNumDisplay(order, orderId)} отменён.`, {}, 1);
+    return;
+  }
+
+  // Start delivery
+  if (action === 'start_deliver') {
+    const { orderId } = payload;
+    const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
+    if (!order) return;
+    order.status = 'delivering';
+    const gKey = order.type === 'taxi' ? 3 : 2;
+    // Update dispatch
+    const ids3 = storage.orderMsgIds.get(orderId);
+    if (ids3) {
+      await editMessage(ids3.chatId, ids3.dispatchMsgId,
+        `Заказ ${getOrderNumDisplay(order, orderId)} — курьер едет (курьер: ${order.courierNick})`,
+        { keyboard: kb([[{ label: 'Статус: В пути', color: 'secondary', payload: {} }]]) }, 1);
+    }
+    await sendInlineMsg(uid,
+      `Напоминание:\nКлиент: ${order.nick}\nАдрес: ${order.address || '—'}\nСумма: ${order.total || order.finalPrice}р.\n\nКогда доберётесь — нажмите «Прибыл к клиенту»:`,
+      kb([[{ label: 'Прибыл к клиенту', color: 'positive', payload: { action: 'courier_arrived', orderId } }]]), 1);
+    await sendMessage(order.clientId,
+      `Заказ готов! ${order.type === 'taxi' ? 'Водитель' : 'Курьер'} ${order.courierNick} едет к вам.`,
+      { keyboard: msgKb([[{ label: 'Статус заказа' }], [{ label: 'Ссылка на курьера' }]]) }, gKey);
+    return;
+  }
+
+  // Courier arrived
+  if (action === 'courier_arrived') {
+    const { orderId } = payload;
+    const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
+    if (!order) return;
+    order.status = 'arrived';
+    await sendMessage(order.clientId, 'Курьер на месте!', {}, order.type === 'taxi' ? 3 : 2);
+    await sendInlineMsg(uid,
+      `Заказ ${getOrderNumDisplay(order, orderId)} — вы на месте у клиента. Нажмите «Доставлен» после передачи:`,
+      kb([[{ label: 'Доставлен', color: 'positive', payload: { action: 'finish_order', orderId } }]]), 1);
+    return;
+  }
+
+  // Finish order
+  if (action === 'finish_order') {
+    const { orderId } = payload;
+    const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
+    if (!order) return;
+    if (!['arrived', 'delivering'].includes(order.status)) {
+      await sendMessage(uid, `Нельзя завершить заказ со статусом «${order.status}». Сначала нажмите «Прибыл к клиенту».`, {}, 1);
+      return;
+    }
+    order.status = 'done';
+    order.finishedAt = Date.now();
+
+    const staff2 = readJSON(STAFF_FILE, {});
+    if (order.courierId && staff2[String(order.courierId)]) {
+      if (order.type === 'taxi') staff2[String(order.courierId)].stats.taxiOrders = (staff2[String(order.courierId)].stats.taxiOrders || 0) + 1;
+      else staff2[String(order.courierId)].stats.deliveryOrders = (staff2[String(order.courierId)].stats.deliveryOrders || 0) + 1;
+      writeJSON(STAFF_FILE, staff2);
+    }
+
+    const ords2 = readJSON(ORDERS_FILE, { delivery: [], taxi: [] });
+    const list2 = order.type === 'taxi' ? ords2.taxi : ords2.delivery;
+    const idx2 = list2.findIndex(o => o.id === orderId);
+    if (idx2 !== -1) list2[idx2] = order;
+    writeJSON(ORDERS_FILE, ords2);
+
+    storage.activeOrders.delete(orderId);
+    storage.activeTaxi.delete(orderId);
+
+    const finishedClientSess = storage.clientSessions.get(order.clientId);
+    if (finishedClientSess) { finishedClientSess.step = DEL_STEP.MAIN; finishedClientSess.data = {}; }
+
+    const reviewLink = `vk.com/wall-${G1_ID}?w=wall-${G1_ID}_1`;
+    await sendMessage(order.clientId,
+      `Заказ завершён! Спасибо!\nОставьте отзыв или жалобу: ${reviewLink}`,
+      { keyboard: msgKb([[{ label: 'Главное меню', color: 'positive' }]]) },
+      order.type === 'taxi' ? 3 : 2);
+
+    const courierLastInline = storage.lastInlineMsg.get(uid);
+    if (courierLastInline) {
+      await clearKeyboard(uid, courierLastInline.msgId, courierLastInline.groupKey);
+      storage.lastInlineMsg.delete(uid);
+    }
+
+    await sendMessage(uid, `Заказ ${getOrderNumDisplay(order, orderId)} завершён. Молодец!`, {}, 1);
+    return;
+  }
+
+  // Taxi: paid waiting
+  if (action === 'taxi_paid_waiting') {
+    const { orderId } = payload;
+    const order = storage.activeTaxi.get(orderId);
+    if (!order) return;
+    order.paidWaiting = true;
+    await sendMessage(order.clientId, 'Водитель начал платное ожидание.', {}, 3);
+    await sendMessage(uid, 'Платное ожидание включено.', {}, 1);
+    return;
+  }
+
+  // Allow courier link (legacy client-side flow — kept for backward compat)
+  if (action === 'allow_link') {
+    const { orderId } = payload;
+    const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
+    if (!order) { await sendMessage(uid, 'Заказ не найден.', {}, 1); return; }
+    const gKey2 = order.type === 'taxi' ? 3 : 2;
+    await sendMessage(order.clientId, `Ссылка на переписку с курьером: vk.me/id${order.courierId}`, {}, gKey2);
+    await sendMessage(uid, 'Ссылка передана клиенту.', {}, 1);
+    return;
+  }
+
+  // Deny link (legacy)
+  if (action === 'deny_link') {
+    const { orderId } = payload;
+    const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
+    if (!order) return;
+    const gKey3 = order.type === 'taxi' ? 3 : 2;
+    await sendMessage(order.clientId, 'Курьер отклонил запрос на ссылку.', {}, gKey3);
+    await sendMessage(uid, 'Запрос отклонён.', {}, 1);
+    return;
+  }
+
+  // Report processed
+  if (action === 'report_processed') {
+    await sendMessage(peerId, 'Отчёт обработан', {}, 1);
     return;
   }
 
