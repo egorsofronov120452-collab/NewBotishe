@@ -3825,160 +3825,159 @@ async function handleCallback(event, groupKey) {
     return;
   }
 
-    await editMessage(uid, order.purchaseMsgId, `Закупки (заказ ${getOrderNumDisplay(order, orderId)}):`, { keyboard: kb(buttons) }, 1);
+  await editMessage(uid, order.purchaseMsgId, `Закупки (заказ ${getOrderNumDisplay(order, orderId)}):`, { keyboard: kb(buttons) }, 1);
+  return;
+}
+
+// Cooking done
+if (action === 'cooking_done') {
+  const { orderId } = payload;
+  const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
+  if (!order) return;
+  order.status = 'accepted';
+  // Update dispatch message
+  const ids = storage.orderMsgIds.get(orderId);
+  if (ids) {
+    await editMessage(ids.chatId, ids.dispatchMsgId, `Заказ ${getOrderNumDisplay(order, orderId)} — готовитс�� (курьер: ${order.courierNick})`, {
+      keyboard: kb([[{ label: 'Статус: Готовится', color: 'secondary', payload: {} }]])
+    }, 1);
+  }
+  // Notify client
+  await sendMessage(order.clientId, 'Ваш заказ готовится! Курьер скоро выедет.', {}, 2);
+  return;
+}
+
+// Start delivery (delivery only — for taxi the driver uses "Прибыл" directly)
+if (action === 'start_deliver') {
+  const { orderId } = payload;
+  const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
+  if (!order) return;
+  order.status = 'delivering';
+  const gKey = order.type === 'taxi' ? 3 : 2;
+  // Напоминание курьеру + кнопка "Прибыл к клиенту" (clears previous inline)
+  await sendInlineMsg(uid,
+    `Напоминание:\nКлиент: ${order.nick}\nАдрес: ${order.address || ((order.from?.name || '') + ' → ' + (order.to?.name || '')) || '—'}\nСумма: ${order.total || order.finalPrice}р.\n\nКогда доберётесь — нажмите «Прибыл к клиенту»:`,
+    kb([[{ label: 'Прибыл к клиенту', color: 'positive', payload: { action: 'courier_arrived', orderId } }]]), 1);
+  // Notify client
+  await sendMessage(order.clientId,
+    `Заказ готов! ${order.type === 'taxi' ? 'Водитель' : 'Курьер'} ${order.courierNick} едет к вам.`,
+    { keyboard: msgKb([[{ label: 'Статус заказа' }], [{ label: 'Ссылка на курьера' }]]) }, gKey);
+  return;
+}
+
+// Courier arrived
+if (action === 'courier_arrived') {
+  const { orderId } = payload;
+  const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
+  if (!order) return;
+  order.status = 'arrived';
+  await sendMessage(order.clientId, 'Курьер на месте!', {}, order.type === 'taxi' ? 3 : 2);
+  // Replace current inline msg with finish button
+  await sendInlineMsg(uid,
+    `Заказ ${getOrderNumDisplay(order, orderId)} — вы на месте у клиента. Нажмите «Доставлен» после передачи:`,
+    kb([[{ label: 'Доставлен', color: 'positive', payload: { action: 'finish_order', orderId } }]]), 1);
+  return;
+}
+
+// Finish order
+if (action === 'finish_order') {
+  const { orderId } = payload;
+  const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
+  if (!order) return;
+  if (!['arrived', 'delivering'].includes(order.status)) {
+    await sendMessage(uid, `Нельзя завершить заказ со статусом «${order.status}». Сначала нажмите «Прибыл к клиенту».`, {}, 1);
     return;
   }
+  order.status = 'done';
+  order.finishedAt = Date.now();
 
-  // Cooking done
-  if (action === 'cooking_done') {
-    const { orderId } = payload;
-    const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
-    if (!order) return;
-    order.status = 'accepted';
-    // Update dispatch message
-    const ids = storage.orderMsgIds.get(orderId);
-    if (ids) {
-      await editMessage(ids.chatId, ids.dispatchMsgId, `Заказ ${getOrderNumDisplay(order, orderId)} — готовитс�� (курьер: ${order.courierNick})`, {
-        keyboard: kb([[{ label: 'Статус: Готовится', color: 'secondary', payload: {} }]])
-      }, 1);
-    }
-    // Notify client
-    await sendMessage(order.clientId, 'Ваш заказ готовится! Курьер скоро выедет.', {}, 2);
-    return;
+  // Update stats
+  const staff = readJSON(STAFF_FILE, {});
+  if (order.courierId && staff[order.courierId]) {
+    if (order.type === 'taxi') staff[order.courierId].stats.taxiOrders = (staff[order.courierId].stats.taxiOrders || 0) + 1;
+    else staff[order.courierId].stats.deliveryOrders = (staff[order.courierId].stats.deliveryOrders || 0) + 1;
+    writeJSON(STAFF_FILE, staff);
   }
 
-  // Start delivery (delivery only — for taxi the driver uses "Прибыл" directly)
-  if (action === 'start_deliver') {
-    const { orderId } = payload;
-    const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
-    if (!order) return;
-    order.status = 'delivering';
-    const gKey = order.type === 'taxi' ? 3 : 2;
-    // Напоминание курьеру + кнопка "Прибыл к клиенту" (clears previous inline)
-    await sendInlineMsg(uid,
-      `Напоминание:\nКлиент: ${order.nick}\nАдрес: ${order.address || ((order.from?.name || '') + ' → ' + (order.to?.name || '')) || '—'}\nСумма: ${order.total || order.finalPrice}р.\n\nКогда доберётесь — нажмите «Прибыл к клиенту»:`,
-      kb([[{ label: 'Прибыл к клиенту', color: 'positive', payload: { action: 'courier_arrived', orderId } }]]), 1);
-    // Notify client
-    await sendMessage(order.clientId,
-      `Заказ готов! ${order.type === 'taxi' ? 'Водитель' : 'Курьер'} ${order.courierNick} едет к вам.`,
-      { keyboard: msgKb([[{ label: 'Статус заказа' }], [{ label: 'Ссылка на курьера' }]]) }, gKey);
-    return;
+  // Persist
+  const ords = readJSON(ORDERS_FILE, { delivery: [], taxi: [] });
+  const list = order.type === 'taxi' ? ords.taxi : ords.delivery;
+  const idx = list.findIndex(o => o.id === orderId);
+  if (idx !== -1) list[idx] = order;
+  writeJSON(ORDERS_FILE, ords);
+
+  storage.activeOrders.delete(orderId);
+  storage.activeTaxi.delete(orderId);
+
+  // Reset client session so they get "Главное меню" and not stuck in WAITING/ACTIVE
+  const finishedClientSess = storage.clientSessions.get(order.clientId);
+  if (finishedClientSess) {
+    finishedClientSess.step = DEL_STEP.MAIN;
+    finishedClientSess.data = {};
   }
 
-  // Courier arrived
-  if (action === 'courier_arrived') {
-    const { orderId } = payload;
-    const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
-    if (!order) return;
-    order.status = 'arrived';
-    await sendMessage(order.clientId, 'Курьер на месте!', {}, order.type === 'taxi' ? 3 : 2);
-    // Replace current inline msg with finish button
-    await sendInlineMsg(uid,
-      `Заказ ${getOrderNumDisplay(order, orderId)} — вы на месте у клиента. Нажмите «Доставлен» после передачи:`,
-      kb([[{ label: 'Доставлен', color: 'positive', payload: { action: 'finish_order', orderId } }]]), 1);
-    return;
+  // Notify client
+  const reviewLink = `vk.com/wall-${G1_ID}?w=wall-${G1_ID}_1`; // placeholder
+  await sendMessage(order.clientId,
+    `Заказ завершён! Спасибо!\nОставьте отзыв или жалобу: ${reviewLink}`,
+    { keyboard: msgKb([[{ label: 'Главное меню', color: 'positive' }]]) },
+    order.type === 'taxi' ? 3 : 2);
+
+  // Clear last inline message for courier (finish button)
+  const courierLastInline = storage.lastInlineMsg.get(uid);
+  if (courierLastInline) {
+    await clearKeyboard(uid, courierLastInline.msgId, courierLastInline.groupKey);
+    storage.lastInlineMsg.delete(uid);
   }
 
-  // Finish order
-  if (action === 'finish_order') {
-    const { orderId } = payload;
-    const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
-    if (!order) return;
-    if (!['arrived', 'delivering'].includes(order.status)) {
-      await sendMessage(uid, `Нельзя завершить заказ со статусом «${order.status}». Сначала нажмите «Прибыл к клиенту».`, {}, 1);
-      return;
-    }
-    order.status = 'done';
-    order.finishedAt = Date.now();
+  await sendMessage(uid, `Заказ ${getOrderNumDisplay(order, orderId)} завершён. Молодец!`, {}, 1);
+  return;
+}
 
-    // Update stats
-    const staff = readJSON(STAFF_FILE, {});
-    if (order.courierId && staff[order.courierId]) {
-      if (order.type === 'taxi') staff[order.courierId].stats.taxiOrders = (staff[order.courierId].stats.taxiOrders || 0) + 1;
-      else staff[order.courierId].stats.deliveryOrders = (staff[order.courierId].stats.deliveryOrders || 0) + 1;
-      writeJSON(STAFF_FILE, staff);
-    }
+// Taxi: paid waiting
+if (action === 'taxi_paid_waiting') {
+  const { orderId } = payload;
+  const order = storage.activeTaxi.get(orderId);
+  if (!order) return;
+  order.paidWaiting = true;
+  await sendMessage(order.clientId, 'Водитель начал платное ожидание.', {}, 3);
+  await sendMessage(uid, 'Платное ожидание включено.', {}, 1);
+  return;
+}
 
-    // Persist
-    const ords = readJSON(ORDERS_FILE, { delivery: [], taxi: [] });
-    const list = order.type === 'taxi' ? ords.taxi : ords.delivery;
-    const idx = list.findIndex(o => o.id === orderId);
-    if (idx !== -1) list[idx] = order;
-    writeJSON(ORDERS_FILE, ords);
+// Allow courier link request
+if (action === 'allow_link') {
+  const { orderId } = payload;
+  const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
+  if (!order) { await sendMessage(uid, 'Заказ не найден.', {}, 1); return; }
+  const gKey = order.type === 'taxi' ? 3 : 2;
+  // Отправляем клиенту ссылку отдельным сообщением + inline-кнопки для продолжения работы
+  await sendMessage(order.clientId,
+    `Ссылка на переписку с курьером: vk.me/id${order.courierId}`,
+    {
+      keyboard: kb([
+        [{ label: 'Статус заказа', color: 'secondary', payload: { action: 'client_status', orderId } }],
+      ]),
+    }, gKey);
+  await sendMessage(uid, 'Ссылка передана клиенту.', {}, 1);
+  return;
+}
 
-    storage.activeOrders.delete(orderId);
-    storage.activeTaxi.delete(orderId);
+// Deny courier link request
+if (action === 'deny_link') {
+  const { orderId } = payload;
+  const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
+  if (!order) return;
+  const gKey = order.type === 'taxi' ? 3 : 2;
+  await sendMessage(order.clientId, 'Курьер отклонил запрос на ссылку.', {}, gKey);
+  await sendMessage(uid, 'Запрос отклонён.', {}, 1);
+  return;
+}
 
-    // Reset client session so they get "Главное меню" and not stuck in WAITING/ACTIVE
-    const finishedClientSess = storage.clientSessions.get(order.clientId);
-    if (finishedClientSess) {
-      finishedClientSess.step = DEL_STEP.MAIN;
-      finishedClientSess.data = {};
-    }
-
-    // Notify client
-    const reviewLink = `vk.com/wall-${G1_ID}?w=wall-${G1_ID}_1`; // placeholder
-    await sendMessage(order.clientId,
-      `Заказ завершён! Спасибо!\nОставьте отзыв или жалобу: ${reviewLink}`,
-      { keyboard: msgKb([[{ label: 'Главное меню', color: 'positive' }]]) },
-      order.type === 'taxi' ? 3 : 2);
-
-    // Clear last inline message for courier (finish button)
-    const courierLastInline = storage.lastInlineMsg.get(uid);
-    if (courierLastInline) {
-      await clearKeyboard(uid, courierLastInline.msgId, courierLastInline.groupKey);
-      storage.lastInlineMsg.delete(uid);
-    }
-
-    await sendMessage(uid, `Заказ ${getOrderNumDisplay(order, orderId)} завершён. Молодец!`, {}, 1);
-    return;
-  }
-
-  // Taxi: paid waiting
-  if (action === 'taxi_paid_waiting') {
-    const { orderId } = payload;
-    const order = storage.activeTaxi.get(orderId);
-    if (!order) return;
-    order.paidWaiting = true;
-    await sendMessage(order.clientId, 'Водитель начал платное ожидание.', {}, 3);
-    await sendMessage(uid, 'Платное ожидание включено.', {}, 1);
-    return;
-  }
-
-  // Allow courier link request
-  if (action === 'allow_link') {
-    const { orderId } = payload;
-    const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
-    if (!order) { await sendMessage(uid, 'Заказ не найден.', {}, 1); return; }
-    const gKey = order.type === 'taxi' ? 3 : 2;
-    // Отправляем клиенту ссылку отдельным сообщением + inline-кнопки для продолжения работы
-    await sendMessage(order.clientId,
-      `Ссылка на переписку с курьером: vk.me/id${order.courierId}`,
-      {
-        keyboard: kb([
-          [{ label: 'Статус заказа', color: 'secondary', payload: { action: 'client_status', orderId } }],
-        ]),
-      }, gKey);
-    await sendMessage(uid, 'Ссылка передана клиенту.', {}, 1);
-    return;
-  }
-
-  // Deny courier link request
-  if (action === 'deny_link') {
-    const { orderId } = payload;
-    const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
-    if (!order) return;
-    const gKey = order.type === 'taxi' ? 3 : 2;
-    await sendMessage(order.clientId, 'Курьер отклонил запрос на ссылку.', {}, gKey);
-    await sendMessage(uid, 'Запрос отклонён.', {}, 1);
-    return;
-  }
-
-  // Report processed
-  if (action === 'report_processed') {
-    await sendMessage(peerId, `Отчёт обработан ✅`, {}, 1);
-    return;
-  }
+// Report processed
+if (action === 'report_processed') {
+  await sendMessage(peerId, `Отчёт обработан ✅`, {}, 1);
+  return;
 }
 
 // ─────────────────────────── NEW-MEMBER GREETING ──────────────
