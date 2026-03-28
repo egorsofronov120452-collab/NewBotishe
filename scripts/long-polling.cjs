@@ -271,29 +271,12 @@ async function editMessage(peerId, cmid, message, params = {}, groupKey = 1) {
 }
 
 /** Remove inline keyboard from a previously sent message (best-effort, ignores errors) */
-async function clearKeyboard(peerId, cmid, groupKey = 1) {
-  if (!cmid) return;
-  try {
-    await callVK('messages.edit', {
-      peer_id: peerId, conversation_message_id: cmid, keep_forward_messages: 1,
-      keyboard: JSON.stringify({ inline: true, buttons: [] }),
-    }, groupKey);
-  } catch (_) { }
-}
+// clearKeyboard intentionally left as no-op — VK drops attachments on edit which causes
+// "Вложение удалено". Stale inline buttons are handled by status checks at callback time.
+async function clearKeyboard(_peerId, _cmid, _groupKey) { /* no-op */ }
 
-/**
- * Send a message with an inline keyboard and automatically clear the previous
- * inline-keyboard message for that peer (issue #6).
- * Does NOT clear for courier work messages (purchaseMsgId tracked separately).
- */
-async function sendInlineMsg(peerId, text, inlineKeyboard, groupKey = 1, skipClearPeer = false) {
-  if (!skipClearPeer) {
-    const prev = storage.lastInlineMsg.get(peerId);
-    if (prev) {
-      await clearKeyboard(peerId, prev.msgId, prev.groupKey);
-      storage.lastInlineMsg.delete(peerId);
-    }
-  }
+/** Send a message with an inline keyboard. Tracks last msg per peer for reference. */
+async function sendInlineMsg(peerId, text, inlineKeyboard, groupKey = 1) {
   const msgId = await sendMessage(peerId, text, { keyboard: inlineKeyboard }, groupKey);
   if (msgId) storage.lastInlineMsg.set(peerId, { msgId, groupKey });
   return msgId;
@@ -337,7 +320,7 @@ function getOrderNumDisplay(order, orderId) {
   return '#???';
 }
 
-// ─────────────────────────── BLACKLIST / MUTES ───────────────
+// ─────────────────────────── BLACKLIST / MUTES ─────────��─────
 function saveBlacklist() {
   const d = {};
   storage.localBlacklist.forEach((v, k) => { d[k] = v; });
@@ -1012,16 +995,28 @@ async function handleDeliveryDM(event) {
             ],
           ]),
         }, 1);
-      await sendMessage(peerId, 'Запрос отправлен курьеру. Ожидайте ответа.', {}, 2);
+      await sendMessage(peerId, 'Запрос отправлен к��рьеру. Ожидайте ответа.', {}, 2);
       return;
     }
     if (text === 'Отменить заказ') {
       const order = storage.activeOrders.get(sess.data.orderId);
-      if (!order) { await sendMessage(peerId, 'Заказ не най��ен или уже завершён.', {}, 2); return; }
+      if (!order) { await sendMessage(peerId, 'Заказ не найден или уже завершён.', {}, 2); return; }
       if (order.status !== 'pending') {
         await sendMessage(peerId, 'Отменить можно только заказ, который ещё не принят курьером.', {}, 2);
         return;
       }
+      const clientCancelIds = storage.orderMsgIds.get(sess.data.orderId);
+      if (clientCancelIds) {
+        await editMessage(clientCancelIds.chatId, clientCancelIds.dispatchMsgId,
+          `Заказ ${getOrderNumDisplay(order, sess.data.orderId)} — ОТМЕНЁН клиентом`,
+          { keyboard: kb([[{ label: 'Отменён', color: 'negative', payload: {} }]]) }, 1);
+      }
+      storage.activeOrders.delete(sess.data.orderId);
+      sess.step = DEL_STEP.MAIN;
+      sess.data = {};
+      await sendMessage(peerId, 'Заказ отменён.', { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, 2);
+      return;
+    }
       storage.activeOrders.delete(sess.data.orderId);
       sess.step = DEL_STEP.MAIN;
       sess.data = {};
@@ -1275,13 +1270,14 @@ async function handleCourierAcceptOrder(event, orderId) {
     return;
   }
 
-  // Clear "Принять заказ" button from dispatch chat
+  // Update dispatch message: replace "Принять заказ" with status label (no attachment removal)
   const dispatchIds = storage.orderMsgIds.get(orderId);
   if (dispatchIds) {
-    await clearKeyboard(dispatchIds.chatId, dispatchIds.dispatchMsgId, 1);
+    await editMessage(dispatchIds.chatId, dispatchIds.dispatchMsgId,
+      `Заказ ${getOrderNumDisplay(order, orderId)} — принят курьером ${profile.nick}`,
+      { keyboard: kb([[{ label: `Принят: ${profile.nick}`, color: 'positive', payload: {} }]]) }, 1);
+    storage.lastInlineMsg.delete(dispatchIds.chatId);
   }
-  // Also clear from lastInlineMsg tracker
-  if (dispatchIds) storage.lastInlineMsg.delete(dispatchIds.chatId);
 
   const aSess = storage.staffSessions.get(uid) || {};
   aSess.step = 'courier_accept_eta';
@@ -1422,7 +1418,12 @@ async function handleGroup1DM(event) {
     const gKey = order.type === 'taxi' ? 3 : 2;
     storage.activeOrders.delete(orderId);
     storage.activeTaxi.delete(orderId);
-    if (order.purchaseMsgId) await clearKeyboard(uid, order.purchaseMsgId, 1);
+    const legacyCancelIds = storage.orderMsgIds.get(orderId);
+    if (legacyCancelIds) {
+      await editMessage(legacyCancelIds.chatId, legacyCancelIds.dispatchMsgId,
+        `Заказ ${getOrderNumDisplay(order, orderId)} — ОТМЕНЁН курьером ${order.courierNick || ''}`,
+        { keyboard: kb([[{ label: 'Отменён', color: 'negative', payload: {} }]]) }, 1);
+    }
     const cancelledClientSess = storage.clientSessions.get(order.clientId);
     if (cancelledClientSess) { cancelledClientSess.step = DEL_STEP.MAIN; cancelledClientSess.data = {}; }
     await sendMessage(order.clientId, 'Курьер отменил ваш заказ. Приносим извинения. Пожалуйста, оформите заказ повторно.',
@@ -3770,11 +3771,17 @@ async function handleCallback(event, groupKey) {
   if (action === 'accept_order') {
     const orderId = payload.orderId;
     const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
-    if (!order || order.status !== 'pending') { return; }
+    if (!order) {
+      await sendMessage(uid, 'Заказ уже не существует (отменён или завершён).', {}, 1);
+      return;
+    }
+    if (order.status !== 'pending') {
+      await sendMessage(uid, `Заказ уже обрабатывается курьером ${order.courierNick || ''}. Принятие невозможно.`, {}, 1);
+      return;
+    }
 
-    // Check online status - use parseInt to ensure consistent Map key
+    // Check online status
     const onlineInfo = storage.online.get(uid);
-    console.log(`[Bot] accept_order: uid=${uid}, onlineInfo=`, onlineInfo ? JSON.stringify(onlineInfo) : 'null', ', online keys:', [...storage.online.keys()]);
     if (!onlineInfo || !onlineInfo.online) {
       await sendMessage(uid, 'Вы не в онлайне. Напишите !онлайн в журнале активности.', {}, 1);
       return;
@@ -3843,8 +3850,13 @@ async function handleCallback(event, groupKey) {
     const gKey = order.type === 'taxi' ? 3 : 2;
     storage.activeOrders.delete(orderId);
     storage.activeTaxi.delete(orderId);
-    // Clear purchase message keyboard
-    if (order.purchaseMsgId) await clearKeyboard(uid, order.purchaseMsgId, 1);
+    // Update dispatch message to show cancelled (no clearKeyboard — avoids VK attachment removal)
+    const cancelIds = storage.orderMsgIds.get(orderId);
+    if (cancelIds) {
+      await editMessage(cancelIds.chatId, cancelIds.dispatchMsgId,
+        `Заказ ${getOrderNumDisplay(order, orderId)} — ОТМЕНЁН курьером ${order.courierNick || ''}`,
+        { keyboard: kb([[{ label: 'Отменён', color: 'negative', payload: {} }]]) }, 1);
+    }
     await sendMessage(order.clientId, 'Курьер отменил ваш заказ. Приносим извинения. Пожалуйста, оформите заказ повторно.',
       { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, gKey);
     const clientSess = storage.clientSessions.get(order.clientId);
@@ -3916,6 +3928,14 @@ async function handleCallback(event, groupKey) {
 
     storage.activeOrders.delete(orderId);
     storage.activeTaxi.delete(orderId);
+
+    // Update dispatch message to show completed
+    const finishIds = storage.orderMsgIds.get(orderId);
+    if (finishIds) {
+      await editMessage(finishIds.chatId, finishIds.dispatchMsgId,
+        `Заказ ${getOrderNumDisplay(order, orderId)} — ЗАВЕРШЁН (курьер: ${order.courierNick})`,
+        { keyboard: kb([[{ label: 'Завершён', color: 'positive', payload: {} }]]) }, 1);
+    }
 
     const finishedClientSess = storage.clientSessions.get(order.clientId);
     if (finishedClientSess) { finishedClientSess.step = DEL_STEP.MAIN; finishedClientSess.data = {}; }
