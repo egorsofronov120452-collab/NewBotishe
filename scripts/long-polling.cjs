@@ -869,7 +869,7 @@ async function handleDeliveryDM(event) {
   }
 
   if (sess.step === DEL_STEP.CHECKOUT_CONF) {
-    if (text === 'Изменить ник') {
+    if (text === 'Измен��ть ник') {
       sess.step = DEL_STEP.CHECKOUT_NICK;
       await sendMessage(peerId, 'Введите новый никнейм:', { keyboard: msgKb([[{ label: 'Отмена', color: 'negative' }]]) }, 2);
       return;
@@ -1002,14 +1002,14 @@ async function handleDeliveryDM(event) {
       const order = storage.activeOrders.get(sess.data.orderId);
       if (!order) { await sendMessage(peerId, 'Заказ не найден или уже завершён.', {}, 2); return; }
       if (order.status !== 'pending') {
-        await sendMessage(peerId, 'Отменить можно только заказ, который ещё не принят курьером.', {}, 2);
+        await sendMessage(peerId, 'Отме��ить можно только заказ, который ещё не принят курьером.', {}, 2);
         return;
       }
       const clientCancelIds = storage.orderMsgIds.get(sess.data.orderId);
       if (clientCancelIds) {
         await editMessage(clientCancelIds.chatId, clientCancelIds.dispatchMsgId,
           `Заказ ${getOrderNumDisplay(order, sess.data.orderId)} — ОТМЕНЁН клиентом`,
-          { keyboard: kb([[{ label: 'Отменён', color: 'negative', payload: {} }]]) }, 1);
+          { keyboard: kb([[{ label: 'Отменён клиентом', color: 'negative', payload: {} }]]) }, 1);
       }
       storage.activeOrders.delete(sess.data.orderId);
       sess.step = DEL_STEP.MAIN;
@@ -1257,7 +1257,7 @@ async function handleCourierAcceptOrder(event, orderId) {
 
   const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
   if (!order) { await sendMessage(uid, 'Заказ не найден.', {}, 1); return; }
-  if (order.status !== 'pending') { await sendMessage(uid, 'Заказ уже принят.', {}, 1); return; }
+  if (order.status !== 'pending' && order.status !== 'processing') { await sendMessage(uid, 'Заказ уже принят.', {}, 1); return; }
 
   if (!profile.vehicles || profile.vehicles.length === 0) {
     await sendMessage(uid, 'У вас нет транспортного средства. Добавьте авто в профиле.', {}, 1);
@@ -1270,7 +1270,10 @@ async function handleCourierAcceptOrder(event, orderId) {
     return;
   }
 
-  // Update dispatch message: replace "Принять заказ" with status label (no attachment removal)
+  // Mark as accepted immediately to block race (other couriers clicking the same button)
+  order.status = 'processing';
+
+  // Update dispatch message: replace "Принять заказ" with status label
   const dispatchIds = storage.orderMsgIds.get(orderId);
   if (dispatchIds) {
     await editMessage(dispatchIds.chatId, dispatchIds.dispatchMsgId,
@@ -1420,13 +1423,19 @@ async function handleGroup1DM(event) {
     storage.activeTaxi.delete(orderId);
     const legacyCancelIds = storage.orderMsgIds.get(orderId);
     if (legacyCancelIds) {
+      // Restore with "Принять заказ" so another courier can take it
       await editMessage(legacyCancelIds.chatId, legacyCancelIds.dispatchMsgId,
-        `Заказ ${getOrderNumDisplay(order, orderId)} — ОТМЕНЁН курьером ${order.courierNick || ''}`,
-        { keyboard: kb([[{ label: 'Отменён', color: 'negative', payload: {} }]]) }, 1);
+        `Заказ ${getOrderNumDisplay(order, orderId)} — ОТМЕНЁН курьером ${order.courierNick || ''}\n(доступен повторно)`,
+        { keyboard: kb([[{ label: 'Принять заказ', color: 'positive', payload: { action: 'accept_order', orderId: order.id } }]]) }, 1);
+      order.status = 'pending';
+      order.courierId = null;
+      order.courierNick = null;
+      order.eta = null;
+      storage.activeOrders.set(orderId, order);
     }
-    const cancelledClientSess = storage.clientSessions.get(order.clientId);
-    if (cancelledClientSess) { cancelledClientSess.step = DEL_STEP.MAIN; cancelledClientSess.data = {}; }
-    await sendMessage(order.clientId, 'Курьер отменил ваш заказ. Приносим извинения. Пожалуйста, оформите заказ повторно.',
+    const clientId = parseInt(order.clientId);
+    storage.clientSessions.set(clientId, { step: DEL_STEP.MAIN, data: {} });
+    await sendMessage(clientId, 'Курьер отменил ваш заказ. Приносим извинения. Пожалуйста, оформите заказ повторно.',
       { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, gKey);
     storage.staffSessions.delete(uid);
     await sendMessage(peerId, `Заказ ${getOrderNumDisplay(order, orderId)} отменён.`, {}, 1);
@@ -1678,7 +1687,7 @@ async function showVehicleMenu(uid, peerId, profile) {
   const menuText = `Автопарк:\n\nЛичные авто:\n${personalCars}\n\nАвто организации:\n${orgCars}`;
   await sendMessage(peerId, menuText, {
     keyboard: msgKb([
-      [{ label: 'Добавить личное авто', color: 'positive' }, { label: 'Взять авто организации', color: 'primary' }],
+      [{ label: '��обавить личное авто', color: 'positive' }, { label: 'Взять авто организации', color: 'primary' }],
       [{ label: 'Удалить авто', color: 'negative' }],
       [{ label: 'Главное меню', color: 'secondary' }],
     ])
@@ -1977,7 +1986,7 @@ async function handleAdminCatalogueSession(uid, peerId, text, event) {
     return true;
   }
 
-  // ─ Add Item ─────────────────────────────────────────────
+  // ─ Add Item ────────────────────────────��────────────────
   if (text === 'Добавить товар') {
     const cat = loadCatalogue();
     if (!cat.categories.length) { await sendMessage(peerId, 'Сначала добавьте категорию.', {}, 1); return true; }
@@ -3776,7 +3785,7 @@ async function handleCallback(event, groupKey) {
       return;
     }
     if (order.status !== 'pending') {
-      await sendMessage(uid, `Заказ уже обрабатывается курьером ${order.courierNick || ''}. Принятие невозможно.`, {}, 1);
+      // Already accepted — do nothing, dispatch message already shows status
       return;
     }
 
@@ -3846,21 +3855,37 @@ async function handleCallback(event, groupKey) {
   if (action === 'courier_cancel_order') {
     const { orderId } = payload;
     const order = storage.activeOrders.get(orderId) || storage.activeTaxi.get(orderId);
-    if (!order) { await sendMessage(uid, 'Заказ не найден.', {}, 1); return; }
+    if (!order) { await sendMessage(uid, 'Заказ не найден или уже завершён.', {}, 1); return; }
+    console.log(`[v0] courier_cancel_order: orderId=${orderId}, clientId=${order.clientId}, type=${order.type}`);
     const gKey = order.type === 'taxi' ? 3 : 2;
     storage.activeOrders.delete(orderId);
     storage.activeTaxi.delete(orderId);
-    // Update dispatch message to show cancelled (no clearKeyboard — avoids VK attachment removal)
+
+    // Restore dispatch message with "Принять заказ" button so another courier can take it
     const cancelIds = storage.orderMsgIds.get(orderId);
+    console.log(`[v0] courier_cancel_order: cancelIds=${JSON.stringify(cancelIds)}`);
     if (cancelIds) {
       await editMessage(cancelIds.chatId, cancelIds.dispatchMsgId,
-        `Заказ ${getOrderNumDisplay(order, orderId)} — ОТМЕНЁН курьером ${order.courierNick || ''}`,
-        { keyboard: kb([[{ label: 'Отменён', color: 'negative', payload: {} }]]) }, 1);
+        `Заказ ${getOrderNumDisplay(order, orderId)} — ОТМЕНЁН курьером ${order.courierNick || ''}\n(доступен повторно)`,
+        { keyboard: kb([[{ label: 'Принять заказ', color: 'positive', payload: { action: 'accept_order', orderId: order.id } }]]) }, 1);
+      // Re-add to active orders as pending so it can be re-accepted
+      order.status = 'pending';
+      order.courierId = null;
+      order.courierNick = null;
+      order.eta = null;
+      storage.activeOrders.set(orderId, order);
     }
-    await sendMessage(order.clientId, 'Курьер отменил ваш заказ. Приносим извинения. Пожалуйста, оформите заказ повторно.',
+
+    // Notify client
+    const clientId = parseInt(order.clientId);
+    console.log(`[v0] courier_cancel_order: sending to clientId=${clientId} with gKey=${gKey}`);
+    await sendMessage(clientId, 'Курьер отменил ваш заказ. Приносим извинения. Пожалуйста, оформите заказ повторно.',
       { keyboard: msgKb([[{ label: 'Главное меню', color: 'secondary' }]]) }, gKey);
-    const clientSess = storage.clientSessions.get(order.clientId);
+
+    const clientSess = storage.clientSessions.get(clientId) || storage.clientSessions.get(order.clientId);
     if (clientSess) { clientSess.step = DEL_STEP.MAIN; clientSess.data = {}; }
+    storage.clientSessions.set(clientId, { step: DEL_STEP.MAIN, data: {} });
+
     await sendMessage(uid, `Заказ ${getOrderNumDisplay(order, orderId)} отменён.`, {}, 1);
     return;
   }
