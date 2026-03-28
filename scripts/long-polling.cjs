@@ -599,7 +599,7 @@ async function handleDeliveryDM(event) {
     sess.step = DEL_STEP.MAIN;
     sess.data = {};
     await sendMessage(peerId,
-      'Добро пожаловать! Выберите раздел:',
+      'Добро пожаловать! ��ыберите раздел:',
       {
         keyboard: msgKb([
           [{ label: 'Каталог', color: 'secondary' }, { label: 'Заказать', color: 'positive' }],
@@ -1186,20 +1186,6 @@ async function sendOrderToDispatch(order) {
     msgId = await sendMessage(chatId, text, dispatchParams, fallbackGKey);
   }
 
-  if (msgId && inlineKb) storage.lastInlineMsg.set(chatId, { msgId, groupKey: 1 });
-
-  // Пробуем сначала через токен группы 1 (главный бот), если не получится — через токен группы 2/3
-  const dispatchParams = keyboard ? { keyboard } : {};
-  if (order.addressPhotoId) dispatchParams.attachment = order.addressPhotoId;
-
-  let msgId = await sendMessage(chatId, text, dispatchParams, 1);
-
-  if (!msgId) {
-    console.log(`[Bot] sendOrderToDispatch: retry with groupKey ${order.type === 'taxi' ? 3 : 2}`);
-    const fallbackGKey = order.type === 'taxi' ? 3 : 2;
-    msgId = await sendMessage(chatId, text, dispatchParams, fallbackGKey);
-  }
-
   if (msgId) {
     storage.orderMsgIds.set(order.id, { dispatchMsgId: msgId, chatId });
     console.log(`[Bot] sendOrderToDispatch OK: order=${order.id}, msgId=${msgId}`);
@@ -1666,7 +1652,7 @@ async function showGroup1MainMenu(uid, peerId, profile, isSs, isRs, role) {
 
 // ─────────────────────────── VEHICLE MANAGEMENT ───────────────
 async function showVehicleMenu(uid, peerId, profile) {
-  const personalCars = (profile.vehicles || []).map(v => `• ${v.name}${v.brandColor ? ' [фирм.]' : ''}`).join('\n') || '(нет)';
+  const personalCars = (profile.vehicles || []).map(v => `• ${v.name}${v.brandColor ? ' [фирм.]' : ''}`).join('\n') || '(��ет)';
   const orgCars = (profile.orgVehicles || []).map(v => `• ${v.name} [орг]`).join('\n') || '(нет)';
   const menuText = `Автопарк:\n\nЛичные авто:\n${personalCars}\n\nАвто организации:\n${orgCars}`;
   await sendMessage(peerId, menuText, {
@@ -1683,7 +1669,7 @@ async function showAdminVehicleMenu(peerId) {
   const orgList = vehicles.org_vehicles.map(v => `• ${v.name}`).join('\n') || '(нет)';
   const catList = vehicles.catalog.map(v => `• ${v.name}`).join('\n') || '(нет)';
   await sendMessage(peerId,
-    `Управление транспортом организации:\n\nАвто в орг. парке:\n${orgList}\n\nКаталог авто:\n${catList}`,
+    `��правление транспортом организации:\n\nАвто в орг. парке:\n${orgList}\n\nКаталог авто:\n${catList}`,
     {
       keyboard: msgKb([
         [{ label: 'Добавить авто в каталог', color: 'positive' }, { label: 'Добавить авто организации', color: 'primary' }],
@@ -2306,7 +2292,7 @@ async function saveNewPromo(uid, peerId, sess, extra) {
     { keyboard: msgKb([[{ label: 'Управление промокодами', color: 'primary' }, { label: 'Главное меню', color: 'secondary' }]]) }, 1);
 }
 
-// ─────────────────────────── TAXI POINTS ADMIN ──────────���─────
+// ─────────────────────────��─ TAXI POINTS ADMIN ──────────���─────
 // Управление точками маршрута через ЛС группы 1 (РС)
 async function handleAdminTaxiPoints(uid, peerId, text, event) {
   const sess = storage.adminSessions.get(uid) || { step: null, data: {} };
